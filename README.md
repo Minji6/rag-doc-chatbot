@@ -118,7 +118,7 @@
 
 Git Flow를 기반으로 하되, 단기 프로젝트 규모에 맞게 `hotfix`·`release` 브랜치는 필요 시에만 사용합니다.
 
-![branch strategy](./docs/gitflow.png)
+![branch strategy](./docs/git-flow.png)
 
 | 브랜치 | 역할 | 규칙 |
 |--------|------|------|
