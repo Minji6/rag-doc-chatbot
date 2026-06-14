@@ -9,7 +9,8 @@
 | 항목 | 내용 |
 |------|------|
 | 프로젝트 목적 | 공식 문서와 수업 자료를 RAG로 검색해 버전 고정·출처 보장 답변을 제공하는 개발자 학습 코치 |
-| 개발 기간 | 2주 (자세한 기간은 추후 추가 예정입니다)|
+| 레퍼런스 | Phind, Perplexity |
+| 개발 기간 | 2주 |
 | 백엔드 레포 | [rag-doc-chatbot](https://github.com/Minji6/rag-doc-chatbot) |
 | 프론트엔드 레포 | [rag-doc-chatbot-frontend](https://github.com/Minji6/rag-doc-chatbot-frontend) |
 
@@ -40,7 +41,7 @@
       </td>
       <td align="center">
         <a href="https://github.com/dlwldP">
-          <img src="https://github.com/dlwldP.png" width="100px;" alt="dlwldP"/>
+          <img src="https://github.com/dlwldP.png" width="100px;" alt="이지예"/>
           <br />
           <sub><b>이지예</b></sub>
         </a>
@@ -51,7 +52,7 @@
       </td>
       <td align="center">
         <a href="https://github.com/garden-kim-git">
-          <img src="https://github.com/garden-kim-git.png" width="100px;" alt="garden-kim-git"/>
+          <img src="https://github.com/garden-kim-git.png" width="100px;" alt="김정원"/>
           <br />
           <sub><b>김정원</b></sub>
         </a>
@@ -62,7 +63,7 @@
       </td>
       <td align="center">
         <a href="https://github.com/qqqkyj">
-          <img src="https://github.com/qqqkyj.png" width="100px;" alt="qqqkyj"/>
+          <img src="https://github.com/qqqkyj.png" width="100px;" alt="강연주"/>
           <br />
           <sub><b>강연주</b></sub>
         </a>
@@ -77,7 +78,7 @@
 
 ---
 
-## 3. Key Features (수정 예정)
+## 3. Key Features
 
 | # | 기능 | 설명 |
 |---|------|------|
