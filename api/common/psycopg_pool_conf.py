@@ -5,7 +5,7 @@ from psycopg_pool import AsyncConnectionPool
 # psycopg_pool 설정: 대화 기록을 위한 연결에 사용
 ###############################################################
 psycopg_pool = AsyncConnectionPool(
-    os.getenv("DATABASE_URL"),
+    os.getenv("DATABASE_URL"), # type: ignore
     min_size=1,
     max_size=2,
     kwargs={"autocommit": True},

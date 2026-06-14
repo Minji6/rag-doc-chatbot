@@ -12,7 +12,7 @@ from sqlalchemy.orm import DeclarativeBase
 # - pool_pre_ping: 유휴 커넥션 체크. 끊어진 커넥션을 재사용하는 문제를 방지
 # - echo=True 옵션은 SQLAlchemy가 실행하는 모든 SQL 문을 콘솔에 출력하도록 설정
 engine = create_async_engine(
-    os.getenv("DATABASE_URL_SQLALCHEMY"),
+    os.getenv("DATABASE_URL_SQLALCHEMY"), # type: ignore
     pool_size=5,
     max_overflow=10,
     pool_pre_ping=True,
