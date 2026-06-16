@@ -1,6 +1,6 @@
-# 📚 Dev Doc RAG Chatbot — Backend
+# 📚 청년정책지원 챗봇 — Backend
 
-FastAPI·LangChain·SQLAlchemy 공식 문서와 수업 자료를 RAG로 검색해 출처가 보장된 답변을 제공하는 개발자 학습 복습 AI 챗봇 백엔드
+온통청년 API 정책 데이터를 RAG로 검색해 주거·취업·교육·금융 분야별 맞춤 답변을 제공하는 청년정책 AI 챗봇 백엔드
 
 ---
 
@@ -8,14 +8,9 @@ FastAPI·LangChain·SQLAlchemy 공식 문서와 수업 자료를 RAG로 검색�
 
 | 항목 | 내용 |
 |------|------|
-| 프로젝트 목적 | 공식 문서와 수업 자료를 RAG로 검색해 버전 고정·출처 보장 답변을 제공하는 개발자 학습 코치 |
+| 프로젝트 목적 | 청년 정책 정보를 RAG로 검색해 분야별 맞춤 답변을 제공하는 청년정책 지원 챗봇 |
 | 프론트엔드 레포 | [rag-doc-chatbot-frontend](https://github.com/Minji6/rag-doc-chatbot-frontend) |
-| 개발 기간 | 2주 |
-
-### 특이사항
-- 공식 문서(FastAPI·LangChain·SQLAlchemy) + 수업 자료를 별도 컬렉션으로 분리해 동시 검색
-- 문서에 없는 내용은 명확하게 거절 (할루시네이션 방지)
-- 인덱싱 시점 버전 고정으로 버전 보장
+| 개발 기간 | 2026.06.16 ~ 2026.06.30 (2주) |
 
 ---
 
@@ -24,24 +19,24 @@ FastAPI·LangChain·SQLAlchemy 공식 문서와 수업 자료를 RAG로 검색�
 | 역할 | 이름 |
 |------|------|
 | 팀장 · FullStack | 김민지 |
-| 팀원 · FullStack | - |
-| 팀원 · FullStack | - |
-| 팀원 · FullStack | - |
+| 팀원 · FullStack | 강연주 |
+| 팀원 · FullStack | 김정원 |
+| 팀원 · FullStack | 이지예 |
 
 ---
 
 ## 3. Key Features
 
 | # | 기능 | 설명 | 활용 챕터 |
-|---|------|------|-----------|
-| 1 | 공식문서 + 수업자료 동시 검색 RAG 답변 | 두 컬렉션 동시 검색, 한국어 요약 + 원문 청크 + 출처 URL + 버전 구조화 출력 | sec04, sec07, sec08 |
-| 2 | 에러 로그 → 문서 + 수업 개념 연결 | 에러 로그 입력 시 원인 분석 + 해결책 + 수업 개념 연결 출력 | sec03, sec07, sec08 |
-| 3 | 라이브러리별 Multi-Agent 조율 | FastAPI·LangChain·SQLAlchemy 전담 Agent 분리, 조건 분기·병렬 처리 후 취합 | sec07, sec08, sec09 |
-| 4 | Doc Linter (코드 검증) | deprecated 여부·권장 대체 패턴·출처 구조화 출력 | sec04, sec07, sec08 |
-| 5 | 대화 히스토리 유지 + 자동 요약 | PostgresSaver 영구 저장, 토큰 초과 시 자동 요약 압축 | sec06 |
-| 6 | 복습 퀴즈 자동 생성 | 문서 청크 기반 Few-Shot 퀴즈 생성, Pydantic 구조화 출력 | sec03, sec04 |
+|---|------|------|----------|
+| 1 | 도메인별 정책 RAG 답변 | 주거·취업·교육·금융 전담 에이전트가 PGVector에서 분야별 정책 검색 후 한국어 답변 생성 | sec07, sec08 |
+| 2 | Multi-Agent Supervisor 라우팅 | 사용자 의도 분석 후 4개 도메인 에이전트 중 하나로 조건 분기 | sec09 |
+| 3 | 대화 히스토리 유지 | 게스트는 InMemorySaver, 회원은 AsyncPostgresSaver로 영구 저장 | sec06 |
+| 4 | 정책 데이터 수집 + 임베딩 | 온통청년 오픈 API → httpx 수집 → 청킹 → PGVector 저장 | sec08 |
+| 5 | 회원가입 · 로그인 (JWT) | 회원/게스트 판별, AsyncPostgresSaver 전환 기준 | sec06 |
+| 6 | 정책 상세 조회 + D-day | 정책 마감일 기반 D-day 계산, return_direct 도구로 즉시 반환 | sec07 |
 | 7 | 스트리밍 답변 출력 | astream + StreamingResponse 실시간 출력 | sec02, sec05 |
-| 8 | 공식문서 임베딩 관리 | URL fetch → 청킹 → PGVector 저장, 컬렉션 분리 관리 | sec08 |
+| 8 | 맞춤 정책 추천 | 사용자 프로필 기반 similarity search로 상위 정책 추천 | sec04, sec08 |
 
 ---
 
