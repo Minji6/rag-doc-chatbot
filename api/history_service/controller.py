@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Form
 from fastapi.responses import PlainTextResponse
 
-from api.chat_history.agent_history_postgressql import HistoryPostgreSQLAgentDep
+from api.history_service.agent_history_postgressql import HistoryPostgreSQLAgentDep
 
 # 로거 생성
 logger = logging.getLogger(__name__)
