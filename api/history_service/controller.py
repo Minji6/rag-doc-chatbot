@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Form
 from fastapi.responses import PlainTextResponse
 
-from api.history_service.agent_history_postgressql import HistoryPostgreSQLAgentDep
+from api.history_service.agent_history_postgresql import HistoryPostgreSQLAgentDep
 
 # 로거 생성
 logger = logging.getLogger(__name__)
@@ -35,3 +35,14 @@ async def get_history_postgresql(
 ):
     # HistoryPostgreSQLAgent를 사용하여 대화 기록 조회
     return await agent.get_history(conversation_id)
+
+# -----------------------------------------------------
+# 대화 ID의 지난 대화 내용을 모두 삭제
+# -----------------------------------------------------
+@router.delete("/clear-history-postgresql")
+async def clear_history_postgresql(
+    conversation_id: str,
+    agent: HistoryPostgreSQLAgentDep
+):
+    # HistoryPostgreSQLAgent를 사용하여 대화 기록 삭제
+    return await agent.clear_history(conversation_id)
