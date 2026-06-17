@@ -1,0 +1,163 @@
+import logging
+from typing import Annotated
+
+from fastapi import APIRouter, Form, HTTPException, UploadFile, status
+from fastapi.responses import PlainTextResponse
+
+from langchain_core.document_loaders import Blob
+from langchain_community.document_loaders.parsers.pdf import PyPDFParser
+
+from api.embedding.service import EmbeddingServiceDep
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/embedding", tags=["embedding"])
+
+
+##################################################
+# 온통청년 API 수집 + 임베딩 엔드포인트
+##################################################
+@router.post("/youth-policy", response_class=PlainTextResponse)
+async def youth_policy_embedding(
+    service: EmbeddingServiceDep,
+    collection_name: Annotated[str, Form()] = "youth_policy_welfare_culture",
+    lclsf_nm: Annotated[str, Form()] = "복지문화",
+):
+    # 온통청년 API 전체 페이지네이션 수집
+    policies = await service.fetch_all_youth_policies(lclsf_nm=lclsf_nm)
+
+    if not policies:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"'{lclsf_nm}' 분야 정책 데이터를 찾을 수 없습니다.",
+        )
+
+    # JSON -> Document 변환
+    documents = [service.policy_to_document(p) for p in policies]
+
+    # 청크 단위로 분할
+    chunks = service.split_documents(documents)
+
+    # 벡터 저장소에 저장
+    await service.save_to_vectorstore_with_sqlalchemy(
+        collection_name=collection_name,
+        chunk_documents=chunks,
+    )
+
+    # 결과 반환
+    result = (
+        f"✅ 청년정책 임베딩 완료!\n\n"
+        f"- 컬렉션명: {collection_name}\n"
+        f"- 대분류: {lclsf_nm}\n"
+        f"- 총 정책 수: {len(policies)}\n"
+        f"- 총 청크 수: {len(chunks)}"
+    )
+    return result
+
+
+##################################################
+# PDF 보강 임베딩 엔드포인트 (정책 데이터가 부족할 때 사용)
+##################################################
+@router.post("/pdf-embedding", response_class=PlainTextResponse)
+async def pdf_embedding(
+    title: Annotated[str, Form()],
+    author: Annotated[str, Form()],
+    attach: Annotated[UploadFile, Form()],
+    service: EmbeddingServiceDep,
+):
+    # 파일 검증
+    if attach.content_type != "application/pdf":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF 파일만 업로드 가능")
+
+    # PDF 로드 및 임베딩 처리
+    content = await attach.read()
+    blob = Blob.from_data(content, mime_type="application/pdf")
+    parser = PyPDFParser()
+    documents = list(parser.lazy_parse(blob))
+
+    # 메타데이터 추가
+    documents = service.add_metadata(
+        documents,
+        title=title,
+        author=author,
+        source=attach.filename,  # type: ignore
+    )
+
+    # 청크 단위로 분할
+    chunks = service.split_documents(documents)
+
+    # 벡터 저장소에 저장
+    await service.save_to_vectorstore_with_sqlalchemy(
+        collection_name=title,
+        chunk_documents=chunks,
+    )
+
+    # 결과 반환
+    result = (
+        f"✅ PDF 임베딩 완료!\n\n"
+        f"- 컬렉션명: {title}\n"
+        f"- 제목: {title}\n"
+        f"- 작성자: {author}\n"
+        f"- 총 페이지 수: {len(documents)}\n"
+        f"- 총 청크 수: {len(chunks)}"
+    )
+    return result
+
+
+##################################################
+# CSV 보강 임베딩 엔드포인트 (정책 데이터가 부족할 때 사용)
+##################################################
+@router.post("/csv-embedding", response_class=PlainTextResponse)
+async def csv_embedding(
+    title: Annotated[str, Form()],
+    attach: Annotated[UploadFile, Form()],
+    service: EmbeddingServiceDep,
+):
+    # 파일 검증
+    if not attach.filename or not attach.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV 파일만 업로드 가능")
+
+    # 임시 저장 후 로드 (CSVLoader는 경로 기반으로 동작)
+    import tempfile
+    from pathlib import Path
+
+    content = await attach.read()
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        documents = service.load_csv(tmp_path)
+        documents = service.add_metadata(documents, title=title, source=attach.filename)
+        chunks = service.split_documents(documents)
+        await service.save_to_vectorstore_with_sqlalchemy(
+            collection_name=title,
+            chunk_documents=chunks,
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    # 결과 반환
+    result = (
+        f"✅ CSV 임베딩 완료!\n\n"
+        f"- 컬렉션명: {title}\n"
+        f"- 총 row 수: {len(documents)}\n"
+        f"- 총 청크 수: {len(chunks)}"
+    )
+    return result
+
+
+##################################################
+# 유사도 검색 엔드포인트 (연동 테스트용)
+##################################################
+@router.post("/similarity-search", response_class=PlainTextResponse)
+async def similarity_search(
+    query: Annotated[str, Form()],
+    k: Annotated[int, Form()],
+    service: EmbeddingServiceDep,
+    collection_name: Annotated[str, Form()] = "youth_policy_welfare_culture",
+):
+    return await service.similarity_search(
+        collection_name=collection_name,
+        query=query,
+        k=k,
+    )

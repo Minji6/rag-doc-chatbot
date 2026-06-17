@@ -99,6 +99,9 @@ async def health_check():
 from api.chat import controller as chat_controller
 app.include_router(chat_controller.router)
 
+from api.embedding import controller as embedding_controller
+app.include_router(embedding_controller.router)
+
 # API 기능별로 분리된 라우터 모듈 임포트
 # from api.sec01_dev_environment import controller as sec01_controller
 # from api.sec02_text_chat import controller as sec02_controller
