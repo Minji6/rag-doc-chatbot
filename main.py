@@ -100,6 +100,7 @@ async def health_check():
 # API 기능별로 분리된 라우터 모듈 임포트
 from api.chat import controller as chat_controller
 from api.history_service import controller as chat_history_controller
+from api.chat_service import controller as chat_service_controller
 # from api.sec01_dev_environment import controller as sec01_controller
 # from api.sec02_text_chat import controller as sec02_controller
 # from api.sec03_messages import controller as sec03_controller
@@ -113,6 +114,7 @@ from api.history_service import controller as chat_history_controller
 # 라우터 등록: FastAPI 애플리케이션에 라우터 추가
 app.include_router(chat_controller.router)
 app.include_router(chat_history_controller.router)
+app.include_router(chat_service_controller.router)
 # app.include_router(sec01_controller.router)
 # app.include_router(sec02_controller.router)
 # app.include_router(sec03_controller.router)
