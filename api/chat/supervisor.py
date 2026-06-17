@@ -10,7 +10,7 @@ from api.chat.nodes.route_node_fun import route_node_fun
 from api.chat.nodes.housing_node import housing_node
 from api.chat.nodes.employment_node import employment_node
 from api.chat.nodes.education_node import education_node
-from api.chat.nodes.finance_node import finance_node
+from api.chat.nodes.welfare_node import welfare_node
 
 _memory = InMemorySaver()  # 게스트용 싱글톤
 
@@ -27,7 +27,7 @@ class YouthPolicySupervisor:
         graph.add_node("housing",    housing_node)
         graph.add_node("employment", employment_node)
         graph.add_node("education",  education_node)
-        graph.add_node("finance",    finance_node)
+        graph.add_node("welfare",    welfare_node)
 
         graph.add_edge(START, "analysis")
         graph.add_conditional_edges(
@@ -37,14 +37,14 @@ class YouthPolicySupervisor:
                 "housing":    "housing",
                 "employment": "employment",
                 "education":  "education",
-                "finance":    "finance",
+                "welfare":    "welfare",
             }
         )
 
         graph.add_edge("housing",    END)
         graph.add_edge("employment", END)
         graph.add_edge("education",  END)
-        graph.add_edge("finance",    END)
+        graph.add_edge("welfare",    END)
 
         self.work_flow = graph.compile(checkpointer=_memory)
 

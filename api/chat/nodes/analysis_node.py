@@ -4,7 +4,7 @@ from api.chat.state import ShareState
 _llm = init_chat_model("gpt-4o-mini", model_provider="openai", temperature=0.0)
 
 SYSTEM = """사용자 질문을 읽고 아래 도메인 중 하나만 출력하세요.
-housing / employment / education / finance"""
+housing / employment / education / welfare"""
 
 
 async def analysis_node(state: ShareState) -> dict:
