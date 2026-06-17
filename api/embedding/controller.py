@@ -19,7 +19,7 @@ router = APIRouter(prefix="/embedding", tags=["embedding"])
 @router.post("/youth-policy", response_class=PlainTextResponse)
 async def youth_policy_embedding(
     service: EmbeddingServiceDep,
-    collection_name: Annotated[str, Form()] = "youth_policy_welfare_culture",
+    collection_name: Annotated[str, Form()] = "youth_policy_all",
     lclsf_nm: Annotated[str, Form()] = "복지문화",
 ):
     # 온통청년 API 전체 페이지네이션 수집
@@ -63,6 +63,8 @@ async def pdf_embedding(
     author: Annotated[str, Form()],
     attach: Annotated[UploadFile, Form()],
     service: EmbeddingServiceDep,
+    region: Annotated[str, Form()] = "",
+    collection_name: Annotated[str, Form()] = "youth_policy_all",
 ):
     # 파일 검증
     if attach.content_type != "application/pdf":
@@ -75,10 +77,14 @@ async def pdf_embedding(
     documents = list(parser.lazy_parse(blob))
 
     # 메타데이터 추가
+    # PDF는 CSV처럼 분류 컬럼이 없으므로 category는 자동 추론이 안 됨.
+    # 정책 데이터가 부족해 PDF로 보강하는 경우 source로 구분만 해두고,
+    # category가 필요하면 업로드 시 별도 파라미터로 받아 추가하는 걸 고려.
     documents = service.add_metadata(
         documents,
         title=title,
         author=author,
+        region=region,
         source=attach.filename,  # type: ignore
     )
 
@@ -87,14 +93,14 @@ async def pdf_embedding(
 
     # 벡터 저장소에 저장
     await service.save_to_vectorstore_with_sqlalchemy(
-        collection_name=title,
+        collection_name=collection_name,
         chunk_documents=chunks,
     )
 
     # 결과 반환
     result = (
         f"✅ PDF 임베딩 완료!\n\n"
-        f"- 컬렉션명: {title}\n"
+        f"- 컬렉션명: {collection_name}\n"
         f"- 제목: {title}\n"
         f"- 작성자: {author}\n"
         f"- 총 페이지 수: {len(documents)}\n"
@@ -109,8 +115,10 @@ async def pdf_embedding(
 @router.post("/csv-embedding", response_class=PlainTextResponse)
 async def csv_embedding(
     title: Annotated[str, Form()],
+    region: Annotated[str, Form()],
     attach: Annotated[UploadFile, Form()],
     service: EmbeddingServiceDep,
+    collection_name: Annotated[str, Form()] = "youth_policy_all",
 ):
     # 파일 검증
     if not attach.filename or not attach.filename.lower().endswith(".csv"):
@@ -126,11 +134,12 @@ async def csv_embedding(
         tmp_path = tmp.name
 
     try:
-        documents = service.load_csv(tmp_path)
+        # region을 전달해야 load_csv 내부에서 category/region/source metadata가 채워짐
+        documents = service.load_csv(tmp_path, region=region)
         documents = service.add_metadata(documents, title=title, source=attach.filename)
         chunks = service.split_documents(documents)
         await service.save_to_vectorstore_with_sqlalchemy(
-            collection_name=title,
+            collection_name=collection_name,
             chunk_documents=chunks,
         )
     finally:
@@ -139,7 +148,8 @@ async def csv_embedding(
     # 결과 반환
     result = (
         f"✅ CSV 임베딩 완료!\n\n"
-        f"- 컬렉션명: {title}\n"
+        f"- 컬렉션명: {collection_name}\n"
+        f"- 지역: {region}\n"
         f"- 총 row 수: {len(documents)}\n"
         f"- 총 청크 수: {len(chunks)}"
     )
@@ -154,7 +164,7 @@ async def similarity_search(
     query: Annotated[str, Form()],
     k: Annotated[int, Form()],
     service: EmbeddingServiceDep,
-    collection_name: Annotated[str, Form()] = "youth_policy_welfare_culture",
+    collection_name: Annotated[str, Form()] = "youth_policy_all",
 ):
     return await service.similarity_search(
         collection_name=collection_name,
