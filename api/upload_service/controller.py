@@ -7,10 +7,11 @@ from fastapi.responses import PlainTextResponse
 from langchain_core.document_loaders import Blob
 from langchain_community.document_loaders.parsers.pdf import PyPDFParser
 
-from api.embedding.service import EmbeddingServiceDep
+from api.upload_service.service import EmbeddingServiceDep
+
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/embedding", tags=["embedding"])
+router = APIRouter(prefix="/upload", tags=["upload"])
 
 
 ##################################################
@@ -23,6 +24,7 @@ async def youth_policy_embedding(
     lclsf_nm: Annotated[str, Form()] = "복지문화",
 ):
     # 온통청년 API 전체 페이지네이션 수집
+    # lclsf_nm은 정책대분류명 (콤마로 복수 지정 가능, 예: "복지문화,교육")
     policies = await service.fetch_all_youth_policies(lclsf_nm=lclsf_nm)
 
     if not policies:
@@ -47,7 +49,7 @@ async def youth_policy_embedding(
     result = (
         f"✅ 청년정책 임베딩 완료!\n\n"
         f"- 컬렉션명: {collection_name}\n"
-        f"- 대분류: {lclsf_nm}\n"
+        f"- 대분류(lclsfNm): {lclsf_nm}\n"
         f"- 총 정책 수: {len(policies)}\n"
         f"- 총 청크 수: {len(chunks)}"
     )
