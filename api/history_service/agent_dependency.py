@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 _inmemory_agent = HistoryInMemoryAgent()
 _postgresql_agent = HistoryPostgreSQLAgent()
 
-def _select_agent(role: Literal["user", "guest"]):
+def _select_agent(role: Literal["user", "guest"]) -> HistoryInMemoryAgent | HistoryPostgreSQLAgent:
     if role == "user":
         logger.info("role= user 이므로 HistoryPostgreSQLAgent 선택")
         return _postgresql_agent
@@ -23,17 +23,17 @@ def _select_agent(role: Literal["user", "guest"]):
     logger.info("role= guest 이므로 HistoryInMemoryAgent 선택")
     return _inmemory_agent
 
-async def get_history_agent_by_query(
+def get_history_agent_by_query(
     role: Annotated[Literal["user", "guest"], Query(description="user 또는 guest")]
-):
+) -> HistoryInMemoryAgent | HistoryPostgreSQLAgent:
     """
     GET/DELETE 요청용: role을 Query 파라미터로 받아 알맞은 에이전트를 반환합니다.
     """
     return _select_agent(role)
 
-async def get_history_agent_by_form(
+def get_history_agent_by_form(
     role: Annotated[Literal["user", "guest"], Form(description="user 또는 guest")]    
-): 
+) -> HistoryInMemoryAgent | HistoryPostgreSQLAgent:
     """
     POST 요청용: role을 Form 파라미터로 받아 알맞은 에이전트를 반환합니다.
     """
