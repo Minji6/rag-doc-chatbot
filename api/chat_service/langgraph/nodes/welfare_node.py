@@ -3,7 +3,6 @@ import logging
 from api.chat_service.langgraph.agents.welfare_agent import WelfareAgent
 from api.chat_service.langgraph.state import ShareState
 
-
 # 로거 생성
 logger = logging.getLogger(__name__)
 
