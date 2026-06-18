@@ -1,11 +1,11 @@
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Form, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from api.history_service.agent_history_inmemory import HistoryInMemoryAgentDep
-from api.history_service.agent_history_postgresql import HistoryPostgreSQLAgentDep
+from api.history_service.agent_dependency import HistoryAgentByFormDep, HistoryAgentByQueryDep, build_thread_id
+
 
 # 로거 생성
 logger = logging.getLogger(__name__)
@@ -14,63 +14,49 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat_history", tags=["chat_history"])
 
 # -----------------------------------------------------
-# HistoryPostgreSQLAgent: 대화 기억을 유지하면서 텍스트 대화
+# 대화 진행: role에 따라 PostgreSQL 또는 InMemory 에이전트로 분기
 # -----------------------------------------------------
-@router.post("/chat-history-postgresql", response_class=PlainTextResponse)
-async def chat_history_postgresql(
+@router.post("/chat-history", response_class=PlainTextResponse)
+async def chat_history(
     message: Annotated[str, Form()],
     conversation_id: Annotated[str, Form()],
-    agent: HistoryPostgreSQLAgentDep
+    role: Annotated[Literal["user", "guest"], Form()],
+    agent: HistoryAgentByFormDep,
+    user_id: Annotated[str | None, Form()] = None,
 ):
-    # 스트리밍 대화 실행
-    response = await agent.run(message, conversation_id)
+    thread_id = build_thread_id(role, conversation_id, user_id)
+    response = await agent.run(message, thread_id)
     return response
 
-# 대화 ID의 지난 대화 내용 응답을 제공
-@router.get("/get-history-postgresql")
-async def get_history_postgresql(
+
+# -----------------------------------------------------
+# 대화 기록 조회: role에 따라 PostgreSQL 또는 InMemory 에이전트로 분기
+# -----------------------------------------------------
+@router.get("/get-history", response_class=JSONResponse)
+async def get_history(
     conversation_id: Annotated[str, Query(description="조회할 대화 ID")],
-    agent: HistoryPostgreSQLAgentDep
+    role: Annotated[Literal["user", "guest"], Query()],
+    agent: HistoryAgentByQueryDep,
+    user_id: Annotated[str | None, Query()] = None,
 ):
-    # HistoryPostgreSQLAgent를 사용하여 대화 기록 조회
-    return await agent.get_history(conversation_id)
-
-# 대화 ID의 지난 대화 내용을 모두 삭제
-@router.delete("/clear-history-postgresql")
-async def clear_history_postgresql(
-    conversation_id: Annotated[str, Query(description="삭제할 대화 ID")],
-    agent: HistoryPostgreSQLAgentDep
-):
-    # HistoryPostgreSQLAgent를 사용하여 대화 기록 삭제
-    return await agent.clear_history(conversation_id)
+    thread_id = build_thread_id(role, conversation_id, user_id)
+    result = await agent.get_history(thread_id)
+    # 응답의 식별자를 원래 conversation_id로 되돌림 (합성 키 비노출)
+    result["conversation_id"] = conversation_id
+    return result
 
 # -----------------------------------------------------
-# InMemoryAgent: 대화 기억을 유지 하지 않음, guest
+# 대화 기록 삭제: role에 따라 PostgreSQL 또는 InMemory 에이전트로 분기
 # -----------------------------------------------------
-@router.post("/chat-history-inmemory",
-             response_class=PlainTextResponse)
-
-async def chat_history_inmemory(
-    message: Annotated[str, Form()],
-    conversation_id: Annotated[str, Form()],
-    agent: HistoryInMemoryAgentDep
-):
-    response = await agent.run(message, conversation_id)
-    return response
-
-# 대화 ID의 지난 대화 내용 응답을 제공
-@router.get("/get-history-inmemory", response_class=JSONResponse)
-async def get_history_inmemory(
-    conversation_id: Annotated[str, Query()],
-    agent: HistoryInMemoryAgentDep
-):
-    history = await agent.get_history(conversation_id)
-    return history
-
-# 대화 ID의 지난 대화 내용 응답을 삭제
-@router.delete("/clear-history-inmemory", response_class=JSONResponse)
-async def clear_history_inmemory(
+@router.delete("/clear-history", response_class=JSONResponse)
+async def clear_history(
     conversation_id: Annotated[str, Query(description="삭제할 대화 ID")],
-    agent: HistoryInMemoryAgentDep
+    role: Annotated[Literal["user", "guest"], Query()],
+    agent: HistoryAgentByQueryDep,
+    user_id: Annotated[str | None, Query()] = None,
 ):
-    return await agent.clear_history(conversation_id)
+    thread_id = build_thread_id(role, conversation_id, user_id)
+    result = await agent.clear_history(thread_id)
+    # 응답의 식별자를 원래 conversation_id로 되돌림 (합성 키 비노출)
+    result["conversation_id"] = conversation_id
+    return result

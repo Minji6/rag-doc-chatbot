@@ -1,0 +1,52 @@
+import logging
+from typing import Annotated
+from pydantic import BaseModel, Field
+from langchain.chat_models import init_chat_model
+from ..state import ShareState
+from ..constants import CATEGORIES, INQUIRY_TYPES
+
+logger = logging.getLogger(__name__)
+
+
+class InquiryAnalysis(BaseModel):
+    """사용자 질문의 분야·의도 분류 결과 구조화 출력 스키마"""
+    category: Annotated[
+        str,
+        Field(description=f"정책 분야. 다음 중 하나만 사용: {', '.join(CATEGORIES)}")
+    ]
+    inquiry_type: Annotated[
+        str,
+        Field(description=f"질문 의도. 다음 중 하나만 사용: {', '.join(INQUIRY_TYPES)}")
+    ]
+
+
+# 모듈 싱글톤 — 한 번만 생성 (지침서 22-2)
+_chat_model = init_chat_model("gpt-4o-mini", model_provider="openai", temperature=0.0)
+_structured_model = _chat_model.with_structured_output(InquiryAnalysis)
+
+_SYSTEM_PROMPT = f"""당신은 청년정책 챗봇의 의도 분석기입니다.
+사용자 질문을 아래 두 기준으로 분류하세요.
+
+[분야 - category] {', '.join(CATEGORIES)} 중 하나
+- 일자리: 취업·창업·재직자 지원 등
+- 주거: 전세대출·월세지원·공공주택 등
+- 교육: 장학금·학자금·내일배움카드 등
+- 복지문화: 금융지원·문화예술·복지 등
+
+[의도 - inquiry_type] {', '.join(INQUIRY_TYPES)} 중 하나
+- 검색: 특정 키워드로 정책을 찾고 싶어함
+- 추천: 본인 상황을 설명하며 맞는 정책을 추천받고 싶어함
+- 상세조회: 특정 정책의 세부 내용을 물어봄
+- 비교: 여러 정책을 비교해달라고 함
+
+애매하면 가장 가까운 값으로 분류하세요."""
+
+
+async def analysis_node(state: ShareState) -> dict:
+    logger.info("의도 분석 노드 실행")
+    analysis: InquiryAnalysis = await _structured_model.ainvoke([
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": state["user_inquiry"]},
+    ])
+    logger.info("분류 결과 — category=%s, inquiry_type=%s", analysis.category, analysis.inquiry_type)
+    return {"category": analysis.category, "inquiry_type": analysis.inquiry_type}
