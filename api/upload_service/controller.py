@@ -156,20 +156,3 @@ async def csv_embedding(
         f"- 총 청크 수: {len(chunks)}"
     )
     return result
-
-
-##################################################
-# 유사도 검색 엔드포인트 (연동 테스트용)
-##################################################
-@router.post("/similarity-search", response_class=PlainTextResponse)
-async def similarity_search(
-    query: Annotated[str, Form()],
-    k: Annotated[int, Form()],
-    service: EmbeddingServiceDep,
-    collection_name: Annotated[str, Form()] = "youth_policy_all",
-):
-    return await service.similarity_search(
-        collection_name=collection_name,
-        query=query,
-        k=k,
-    )
