@@ -14,7 +14,7 @@ from api.chat_service.langgraph.agents.welfare_agent import WelfareAgent
 
 async def main():
     agent = WelfareAgent()
-    result = await agent.run("청년 복지 정책 알려줘", user_role="guest")
+    result = await agent.run("저소득 청년을 위한 문화비 지원 정책 알려줘", user_role="guest")
     print(result)
 
 
