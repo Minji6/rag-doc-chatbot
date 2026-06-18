@@ -46,7 +46,7 @@ async def analysis_node(state: ShareState) -> dict:
     logger.info("의도 분석 노드 실행")
     analysis: InquiryAnalysis = await _structured_model.ainvoke([
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": state["user_query"]},
+        {"role": "user", "content": state["user_inquiry"]},
     ])
     logger.info("분류 결과 — category=%s, inquiry_type=%s", analysis.category, analysis.inquiry_type)
     return {"category": analysis.category, "inquiry_type": analysis.inquiry_type}
