@@ -1,7 +1,7 @@
 import logging
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, status
 
 logger = logging.getLogger(__name__)
 
@@ -10,24 +10,33 @@ logger = logging.getLogger(__name__)
 ###############################################################
 # HTTPException이 발생했을때 처리하는 함수
 async def http_exception_handler(request: Request, e: HTTPException):
-    return JSONResponse({
-        "message": "HTTP 에러 처리함",
-        "detail": str(e)
-    })
+    return JSONResponse(
+        status_code=e.status_code,
+        content={"message": str(e.detail)}
+    )
 
 # 유효성 검사 예외가 발생했을때 처리하는 함수
 async def validation_exception_handler(request: Request, e: RequestValidationError):
-    return JSONResponse({
-        "message": "요청 데이터 유효성 검사 실패 처리함",
-        "detail": e.errors()
-    })
+    errors = e.errors()
+    if errors:
+        first_error = errors[0]
+        field = first_error.get("loc", ["field"])[-1]
+        msg = first_error.get("msg", "요청 데이터 유효성 검사 실패")
+        message = f"{field}: {msg}"
+    else:
+        message = "요청 데이터 유효성 검사 실패"
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"message": message}
+    )
 
 # 그 이외에 발생하는 모든 예외를 처리하는 함수
 async def exception_handler(request: Request, e: Exception):
-    return JSONResponse({
-        "message": "에러 처리함",
-        "detail": str(e)
-    })
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"message": "서버 에러", "detail": str(e)}
+    )
     
 ###############################################################
 # 예외 처리기 일괄 등록 함수

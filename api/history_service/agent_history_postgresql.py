@@ -43,14 +43,14 @@ class HistoryPostgreSQLAgent:
         self._initialized = True
 
     # 에이전트 실행 메소드
-    async def run(self, message:str, conversation_id:str) -> str:
+    async def run(self, message:str, thread_id:str) -> str:
         # 비동기 초기화 메소드 호출
         await self._initialize()
 
         # LLM 요청하고 응답받기
         result = await self.agent.ainvoke( #type: ignore
             {"messages": [{"role":"user", "content":message}]},
-            {"configurable": {"thread_id": conversation_id},
+            {"configurable": {"thread_id": thread_id},
              "callbacks": [LoggingCallbackHandler()]}
         )
 
@@ -58,18 +58,18 @@ class HistoryPostgreSQLAgent:
         return result["messages"][-1].content
 
     # 대화 히스토리 조회
-    async def get_history(self, conversation_id:str) -> dict:
+    async def get_history(self, thread_id:str) -> dict:
         await self._initialize()
 
         # 현재 에이전트의 상태(저장정보) 가져오기
         state = await self.agent.aget_state({ # type: ignore
-            "configurable": {"thread_id": conversation_id}
+            "configurable": {"thread_id": thread_id}
         })
 
         # 에이전트 상태에서 지난 과거 대화 내용이 없는 경우
         if not state or not state.values.get("messages"):
             return {
-                "conversation_id": conversation_id,
+                "conversation_id": thread_id,
                 "messages": []
             }
 
@@ -82,20 +82,20 @@ class HistoryPostgreSQLAgent:
             })
 
         return {
-            "conversation_id": conversation_id,
+            "conversation_id": thread_id,
             "messages": messages
         }
 
     # 대화 히스토리 삭제하기
-    async def clear_history(self, conversation_id:str) -> dict:
+    async def clear_history(self, thread_id:str) -> dict:
         # 비동기 초기화 메소드 호출
         await self._initialize()
 
         # 해당 대화 ID를 완전히 삭제
-        await self.checkpointer.adelete_thread(conversation_id) # type: ignore
+        await self.checkpointer.adelete_thread(thread_id) # type: ignore
 
         return{
-            "conversation_id": conversation_id,
+            "conversation_id": thread_id,
             "message": "대화 기록이 삭제되었습니다."
         }
 
