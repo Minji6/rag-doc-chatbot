@@ -42,7 +42,7 @@ class EmbeddingService:
       - 페이지 크기: display -> pageSize
       - 응답 구조: 최상위가 아니라 result.youthPolicyList 안에 있음 (실제 호출로 확인)
       - 페이지네이션: result.pagging.totCount로 전체 건수 확인 가능
-      - 특화요건 필드: sbizCd (소문자 b, 실제 응답 기준)
+      - 특화요건 필드: sBizCd (소문자 b, 실제 응답 기준)
       - 신청기간 필드: aplyYmd (응답값은 비어있는 경우가 많음 - 별도 확인 필요)
     """
 
@@ -164,7 +164,7 @@ class EmbeddingService:
             "sub_category": policy.get("mclsfNm", ""),    # 정책중분류명
             "title": title,
             "earn_condition_code": policy.get("earnCndSeCd", ""),  # 소득조건 구분
-            "special_biz_code": policy.get("sbizCd", ""),          # 정책특화요건코드
+            "special_biz_code": policy.get("sBizCd", ""),          # 정책특화요건코드
             # 신청기간: aplyYmd가 비어있는 경우가 많아(실제 호출 결과로 확인됨)
             # 신청기간구분코드(특정기간/상시/마감)와 사업기간도 함께 보관
             "apply_period": policy.get("aplyYmd", ""),
@@ -175,6 +175,11 @@ class EmbeddingService:
             "region_code": policy.get("zipCd", ""),                 # 정책거주지역코드 (지역 필터링 대비)
             "min_age": policy.get("sprtTrgtMinAge", ""),             # 지원대상최소연령 (자격판별 활용)
             "max_age": policy.get("sprtTrgtMaxAge", ""),             # 지원대상최대연령 (자격판별 활용)
+            # 검색 필터용
+            "job_status_code": policy.get("jobCd", ""),                  # 취업
+            "education_level_code": policy.get("schoolCd", ""),          # 학력
+            "marital_status_code": policy.get("mrgSttsCd", ""),          # 결혼 (기혼:0055001/미혼:0055002/제한없음:0055003)
+            "major_field_code": policy.get("plcyMajorCd", ""),           # 전공
         }
 
         return Document(page_content=text, metadata=metadata)
@@ -261,6 +266,29 @@ class EmbeddingService:
             doc.metadata["source"] = "public_data_csv"
 
         return documents
+    
+    def load_csv_from_bytes(
+        self,
+        content: bytes,
+        region: str = "",
+    ) -> list[Document]:
+        """업로드된 CSV 바이트를 임시 파일로 저장 후 Document로 로드한다."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".csv",
+            delete=False,
+        ) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        try:
+            return self.load_csv(
+                file_path=tmp_path,
+                region=region,
+            )
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
 
     def add_metadata(self, documents: list[Document], **metadata: str) -> list[Document]:
         """Document 리스트에 공통 메타데이터를 추가한다."""

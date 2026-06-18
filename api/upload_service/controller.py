@@ -126,26 +126,25 @@ async def csv_embedding(
     if not attach.filename or not attach.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV 파일만 업로드 가능")
 
-    # 임시 저장 후 로드 (CSVLoader는 경로 기반으로 동작)
-    import tempfile
-    from pathlib import Path
-
     content = await attach.read()
-    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
 
-    try:
-        # region을 전달해야 load_csv 내부에서 category/region/source metadata가 채워짐
-        documents = service.load_csv(tmp_path, region=region)
-        documents = service.add_metadata(documents, title=title, source=attach.filename)
-        chunks = service.split_documents(documents)
-        await service.save_to_vectorstore_with_sqlalchemy(
-            collection_name=collection_name,
-            chunk_documents=chunks,
-        )
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
+    documents = service.load_csv_from_bytes(
+        content=content,
+        region=region,
+    )
+
+    documents = service.add_metadata(
+        documents,
+        title=title,
+        source=attach.filename,
+    )
+
+    chunks = service.split_documents(documents)
+
+    await service.save_to_vectorstore_with_sqlalchemy(
+        collection_name=collection_name,
+        chunk_documents=chunks,
+    )
 
     # 결과 반환
     result = (
