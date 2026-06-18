@@ -26,26 +26,26 @@ class HistoryInMemoryAgent:
         )
     
     # 에이전트 실행 메소드    
-    async def run(self, message:str, conversation_id: str) -> str:
+    async def run(self, message:str, thread_id: str) -> str:
         result = await self.agent.ainvoke(
             {"messages":[{"role":"user", "content":message}]},
-            {"configurable": {"thread_id": conversation_id},
+            {"configurable": {"thread_id": thread_id},
              "callbacks": [LoggingCallbackHandler()]}
         )
         
         return result["messages"][-1].content
     
     # 대화 히스토리 조회
-    async def get_history(self, conversation_id:str) -> dict:
+    async def get_history(self, thread_id:str) -> dict:
         # 현재 에이전트 상태 가져오기
         state = await self.agent.aget_state({
-            "configurable": {"thread_id": conversation_id}
+            "configurable": {"thread_id": thread_id}
         })
         
         # 에이전트 상태에서 지난 과거 대화 내용이 없는 경우
         if not state or not state.values.get("messages"):
             return {
-                "conversation_id": conversation_id,
+                "conversation_id": thread_id,
                 "messages": []
             }
             
@@ -58,17 +58,17 @@ class HistoryInMemoryAgent:
             })
             
         return {
-            "conversation_id": conversation_id,
+            "conversation_id": thread_id,
             "messages": messages
         }
         
     # 대화 히스토리 삭제
-    async def clear_history(self, conversation_id:str) -> dict:
+    async def clear_history(self, thread_id:str) -> dict:
         # 해당 대화 ID를 완전히 삭제
         checkpointer = cast(InMemorySaver, self.agent.checkpointer)
-        await checkpointer.adelete_thread(conversation_id)
+        await checkpointer.adelete_thread(thread_id)
         return {
-            "conversation_id": conversation_id,
+            "conversation_id": thread_id,
             "message": "대화 기록이 삭제되었습니다."
         }
     
