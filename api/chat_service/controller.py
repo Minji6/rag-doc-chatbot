@@ -7,6 +7,7 @@ from api.chat_service.langgraph.supervisor import ChatbotSupervisorDep
 from api.chat_service.langgraph.constants import ROLE_USER, ROLE_GUEST
 from api.auth_service.service import UserServiceDep
 from api.common.sqlalchemy_conf import OrmSessionDep
+from api.history_service.agent_dependency import HistoryAgentByFormDep, build_thread_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -20,6 +21,7 @@ async def chat(
     supervisor: ChatbotSupervisorDep,
     user_service: UserServiceDep,
     session: OrmSessionDep,
+    agent: HistoryAgentByFormDep, # role에 따라 자동 주입
     user_id: Annotated[int | None, Form()] = None,
 ):
     if role not in (ROLE_USER, ROLE_GUEST):
@@ -27,15 +29,32 @@ async def chat(
 
     logger.info(f"[{conversation_id}] 메시지 수신: {message[:30]}...")
 
-    user_profile = None
+    user_profile = None # guest면 None
     if role == ROLE_USER:
         if not user_id:
             raise HTTPException(status_code=422, detail="user role에는 user_id가 필요합니다.")
         user_profile = await user_service.get_user_profile(user_id, session)
         if not user_profile:
             raise HTTPException(status_code=404, detail=f"user_id={user_id} 유저를 찾을 수 없습니다.")
+        
+    # user → "{user_id}:{conversation_id}", guest → "{conversation_id}"
+    thread_id = build_thread_id(role, conversation_id, str(user_id) if user_id else None)
+    
+    # 이전 대화 불러오기 - 첫 대화면 빈 리스트 반환
+    history = await agent.get_history(thread_id)
+    logger.info(f"[{thread_id}] 이전 대화 {len(history['messages'])}개 로드")
 
-    response = await supervisor.run(user_inquiry=message, user_role=role, user_profile=user_profile)
+    response = await supervisor.run(
+        user_inquiry=message, 
+        user_role=role, 
+        user_profile=user_profile,
+        messages=history["messages"]
+    )
+    
+    # 새 대화 저장 - LLM에 재호출 없이 checkpointer에 직접 저장
+    await agent.save_exchange(message, response, thread_id)
+    logger.info(f"[{thread_id}] 대화 저장 완료")
+    
     return JSONResponse(content={
         "conversation_id": conversation_id,
         "message": response,

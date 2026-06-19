@@ -1,10 +1,10 @@
 import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Form, Query
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi import APIRouter, Query
+from fastapi.responses import JSONResponse
 
-from api.history_service.agent_dependency import HistoryAgentByFormDep, HistoryAgentByQueryDep, build_thread_id
+from api.history_service.agent_dependency import HistoryAgentByQueryDep, build_thread_id
 
 
 # 로거 생성
@@ -12,22 +12,6 @@ logger = logging.getLogger(__name__)
 
 # 라우터 생성
 router = APIRouter(prefix="/chat_history", tags=["chat_history"])
-
-# -----------------------------------------------------
-# 대화 진행: role에 따라 PostgreSQL 또는 InMemory 에이전트로 분기
-# -----------------------------------------------------
-@router.post("/chat-history", response_class=PlainTextResponse)
-async def chat_history(
-    message: Annotated[str, Form()],
-    conversation_id: Annotated[str, Form()],
-    role: Annotated[Literal["user", "guest"], Form()],
-    agent: HistoryAgentByFormDep,
-    user_id: Annotated[str | None, Form()] = None,
-):
-    thread_id = build_thread_id(role, conversation_id, user_id)
-    response = await agent.run(message, thread_id)
-    return response
-
 
 # -----------------------------------------------------
 # 대화 기록 조회: role에 따라 PostgreSQL 또는 InMemory 에이전트로 분기
