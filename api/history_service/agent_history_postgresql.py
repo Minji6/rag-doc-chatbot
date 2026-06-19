@@ -2,6 +2,7 @@ import logging
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from api.common.psycopg_pool_conf import psycopg_pool
 from api.common.utils import LoggingCallbackHandler
@@ -98,6 +99,18 @@ class HistoryPostgreSQLAgent:
             "conversation_id": thread_id,
             "message": "대화 기록이 삭제되었습니다."
         }
+        
+    # supervisor가 생성한 답변을 LLM 재호출 없이 checkpointer에 직접 저장
+    async def save_exchange(self, user_msg:str, ai_response: str, thread_id: str):
+        await self._initialize() # 비동기 초기화 함수
+        await self.agent.aupdate_state( # type: ignore
+            {"configurable": {"thread_id": thread_id}},
+            {"messages": [
+                HumanMessage(content=user_msg),
+                AIMessage(content=ai_response)
+            ]},
+            as_node="model",
+        )
 
 
 # 의존성 주입을 위한 타입 힌트 정의
