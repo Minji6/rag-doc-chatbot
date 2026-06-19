@@ -93,5 +93,4 @@ class HousingAgent:
         source = "rag" if policies else "none"
         return DomainResult(text=text, policies=policies, category=_CATEGORY, source=source)
 
-
 HousingAgentDep = Annotated[HousingAgent, Depends(HousingAgent)]
