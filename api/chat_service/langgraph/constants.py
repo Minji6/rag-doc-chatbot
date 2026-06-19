@@ -1,6 +1,8 @@
 # api/chat_service/langgraph/constants.py
 CATEGORIES = ("일자리", "주거", "교육", "복지문화")
 INQUIRY_TYPES = ("검색", "추천", "상세조회", "비교")
+ROLE_USER = "user"
+ROLE_GUEST = "guest"
 
 CATEGORY_ROUTING = {
     "일자리": "employment",
