@@ -1,5 +1,25 @@
-from typing import Annotated, TypedDict
+from typing import Annotated, Literal, TypedDict
 from langgraph.graph import add_messages
+
+
+class DomainResult(TypedDict):
+    """도메인 에이전트(주거/취업/교육/복지) 표준 반환 스키마.
+
+    - text: LLM이 생성한 사용자용 자연어 답변
+    - policies: search_policy가 PGVector에서 찾은 raw 정책 메타(화이트리스트 적용)
+                gather_node가 compare_policies / policy_priority_score 호출 시 사용
+    - category: 어느 분야 결과인지 (멀티 분야 병합 시 출처 구분용)
+    - source: 정책 출처 — "rag"(PGVector) / "web"(웹 보완) / "none"(결과 없음)
+    """
+    text: str
+    policies: list[dict]
+    category: str
+    source: Literal["rag", "web", "none"]
+
+
+def empty_domain_result(category: str = "") -> DomainResult:
+    """초기 state 및 fallback에 쓰는 빈 DomainResult."""
+    return DomainResult(text="", policies=[], category=category, source="none")
 
 
 class ShareState(TypedDict):
@@ -12,9 +32,9 @@ class ShareState(TypedDict):
     category: str          # 분야: 주거 / 취업 / 교육 / 복지 (constants.py 참고)
     inquiry_type: str      # 의도: 검색 / 추천 / 상세조회 / 비교 (constants.py 참고)
 
-    housing_result: str        # 주거 에이전트 답변
-    employment_result: str     # 취업 에이전트 답변
-    education_result: str      # 교육 에이전트 답변
-    welfare_result: str        # 복지 에이전트 답변
+    housing_result: DomainResult        # 주거 에이전트 답변
+    employment_result: DomainResult     # 취업 에이전트 답변
+    education_result: DomainResult      # 교육 에이전트 답변
+    welfare_result: DomainResult        # 복지 에이전트 답변
 
     final_response: str        # gather_node가 채우는 최종 답변
