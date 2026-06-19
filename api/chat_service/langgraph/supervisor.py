@@ -54,11 +54,12 @@ class ChatbotSupervisor:
 
         self.workflow = graph.compile()
 
-    async def run(self, user_inquiry: str, user_role: str = "guest") -> str:
+    async def run(self, user_inquiry: str, user_role: str = "guest", user_profile: dict = {}) -> str:
         initial_state = ShareState(
             messages=[],
             user_inquiry=user_inquiry,
             user_role=user_role,
+            user_profile=user_profile,
             category="",
             inquiry_type="",
             housing_result="",

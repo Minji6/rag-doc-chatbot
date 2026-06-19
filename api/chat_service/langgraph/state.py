@@ -7,6 +7,7 @@ class ShareState(TypedDict):
 
     user_inquiry: str      # 사용자 원본 질문 (지침서 §18-1 표준)
     user_role: str         # "guest" 또는 "user" (로그인 여부)
+    user_profile: dict     # 로그인 유저 프로필 (guest일 경우 빈 dict)
 
     category: str          # 분야: 주거 / 취업 / 교육 / 복지 (constants.py 참고)
     inquiry_type: str      # 의도: 검색 / 추천 / 상세조회 / 비교 (constants.py 참고)

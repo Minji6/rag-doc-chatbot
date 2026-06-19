@@ -43,7 +43,7 @@ _SYSTEM_PROMPT = f"""당신은 청년정책 챗봇의 의도 분석기입니다.
 
 
 async def analysis_node(state: ShareState) -> dict:
-    logger.info("의도 분석 노드 실행")
+    logger.info("의도 분석 노드 실행 — user_role=%s", state["user_role"])
     analysis: InquiryAnalysis = await _structured_model.ainvoke([
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": state["user_inquiry"]},
