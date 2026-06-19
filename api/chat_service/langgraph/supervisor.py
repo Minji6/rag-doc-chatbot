@@ -1,18 +1,9 @@
-# api/chat_service/langgraph/supervisor.py
 import logging
 from typing import Annotated
 from fastapi import Depends
 from langgraph.graph import END, START, StateGraph
-
 from .state import ShareState
-from .constants import CATEGORY_ROUTING
-from .nodes.analysis_node import analysis_node
-from .nodes.housing_node import housing_node
 from .nodes.employment_node import employment_node
-from .nodes.education_node import education_node
-from .nodes.welfare_node import welfare_node
-from .nodes.route_node_fun import route_node_fun
-from .nodes.gather_node import gather_node
 
 logger = logging.getLogger(__name__)
 
@@ -22,58 +13,32 @@ class ChatbotSupervisor:
         self.logger = logging.getLogger(f"{__name__}.ChatbotSupervisor")
         self._build()
 
-    def _build(self) -> None:
+    def _build(self):
         graph = StateGraph(ShareState)
 
-        # 노드 등록
-        graph.add_node("analysis", analysis_node)
-        graph.add_node("housing", housing_node)
         graph.add_node("employment", employment_node)
-        graph.add_node("education", education_node)
-        graph.add_node("welfare", welfare_node)
-        graph.add_node("gather", gather_node)
 
-        # 시작 → 의도 분석
-        graph.add_edge(START, "analysis")
-
-        # 분석 결과(category)에 따라 4개 도메인 노드 중 하나로 분기
-        # CATEGORY_ROUTING의 값(employment/housing/education/welfare)을
-        # 그대로 노드명으로 매핑 — route_node_fun이 반환하는 값과 1:1 대응
-        node_names = set(CATEGORY_ROUTING.values())
-        graph.add_conditional_edges(
-            "analysis",
-            route_node_fun,
-            {name: name for name in node_names},
-        )
-
-        # 도메인 노드 4개 → 전부 gather로 모임 (명세서 개요 구조)
-        for node_name in node_names:
-            graph.add_edge(node_name, "gather")
-
-        graph.add_edge("gather", END)
+        graph.add_edge(START, "employment")  # 바로 취업 노드로
+        graph.add_edge("employment", END)
 
         self.workflow = graph.compile()
 
-    async def run(self, user_inquiry: str, user_role: str = "guest", user_profile: dict | None = None) -> str:
-        user_profile = user_profile or {}
+    async def run(self, inquiry: str, user_id: str = "") -> str:
         initial_state = ShareState(
             messages=[],
-            user_inquiry=user_inquiry,
-            user_role=user_role,
-            user_profile=user_profile,
-            category="",
-            inquiry_type="",
+            user_inquiry=inquiry,
+            user_id=user_id,
+            is_authenticated=bool(user_id),
+            inquiry_analysis="",
             housing_result="",
             employment_result="",
             education_result="",
-            welfare_result="",
+            finance_result="",
             final_response="",
         )
         final_state = await self.workflow.ainvoke(initial_state)
-        return final_state["final_response"]
-
-    def get_graph_image(self) -> bytes:
-        return self.workflow.get_graph().draw_mermaid_png()
+        return final_state["employment_result"]  # 취업 결과만 반환
 
 
+# ── Dep 타입 별칭 (파일 하단) ─────────────────────────────
 ChatbotSupervisorDep = Annotated[ChatbotSupervisor, Depends(ChatbotSupervisor)]
