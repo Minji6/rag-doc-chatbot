@@ -9,7 +9,7 @@ from api.common.sqlalchemy_conf import OrmSessionDep
 
 logger = logging.getLogger(__name__)
 
-
+# 유저 조회
 class UserService:
     async def get_user_profile(self, user_id: int, session: AsyncSession) -> dict | None:
         result = await session.execute(select(User).where(User.user_id == user_id))
