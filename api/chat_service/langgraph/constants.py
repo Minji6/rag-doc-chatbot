@@ -36,3 +36,21 @@ AGENT_CATEGORY = {
     "education": "교육",
     "welfare": "복지문화",
 }
+
+# 도메인 에이전트가 *_result["policies"]에 담을 PGVector 메타 필드 화이트리스트.
+# compare_policies / policy_priority_score 등 후속 tool이 노이즈 없이 받을 수 있도록 최소 필드만 추림.
+# 필요한 필드 누락 시 여기에 추가.
+POLICY_METADATA_FIELDS = (
+    "plcyNo",        # 정책번호 (식별자)
+    "plcyNm",        # 정책명
+    "category",      # 분야
+    "sub_category",  # 세부분야
+    "plcyExplnCn",   # 정책 설명
+    "plcySprtCn",    # 지원 내용
+    "ptcpPrpTrgtCn", # 참여 대상
+    "aplyUrlAddr",   # 신청 URL
+    "aplyPrdSeCd",   # 신청기간 구분 (특정기간/상시/마감)
+    "aplyYmd",       # 신청 기간
+    "bizPrdBgngYmd", # 사업 시작일
+    "bizPrdEndYmd",  # 사업 종료일
+)
