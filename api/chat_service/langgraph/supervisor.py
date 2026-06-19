@@ -4,8 +4,8 @@ from typing import Annotated
 from fastapi import Depends
 from langgraph.graph import END, START, StateGraph
 
-from .state import ShareState, empty_domain_result
-from .constants import AGENT_CATEGORY, CATEGORY_ROUTING
+from .state import ShareState
+from .constants import CATEGORY_ROUTING
 from .nodes.analysis_node import analysis_node
 from .nodes.housing_node import housing_node
 from .nodes.employment_node import employment_node
@@ -70,10 +70,10 @@ class ChatbotSupervisor:
             user_profile=user_profile,
             category="",
             inquiry_type="",
-            housing_result=empty_domain_result(AGENT_CATEGORY["housing"]),
-            employment_result=empty_domain_result(AGENT_CATEGORY["employment"]),
-            education_result=empty_domain_result(AGENT_CATEGORY["education"]),
-            welfare_result=empty_domain_result(AGENT_CATEGORY["welfare"]),
+            housing_result="",
+            employment_result="",
+            education_result="",
+            welfare_result="",
             final_response="",
         )
         final_state = await self.workflow.ainvoke(initial_state)

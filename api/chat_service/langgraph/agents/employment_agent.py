@@ -1,11 +1,10 @@
 from langchain_core.tools import tool
 from ._stub_agent import StubAgent
-from ..constants import AGENT_CATEGORY
 
 
 class EmploymentAgent(StubAgent):
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
-        super().__init__(domain_label="일자리", category=AGENT_CATEGORY["employment"])
+        super().__init__(domain_label="일자리")
 
 
 @tool

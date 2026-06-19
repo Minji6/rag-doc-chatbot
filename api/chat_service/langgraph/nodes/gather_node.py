@@ -9,12 +9,10 @@ _FALLBACK_MESSAGE = "죄송합니다, 답변을 생성하지 못했습니다. �
 
 
 async def gather_node(state: ShareState) -> dict:
-    # NOTE: task #4(다중 결과 병합/비교)에서 본격 재작성 예정. 현재는 단일 분야 패스스루.
     logger.info("결과 취합 노드 실행 — category=%s", state.get("category"))
 
     field_name = CATEGORY_RESULT_FIELD.get(state.get("category", ""))
-    domain_result = state.get(field_name) if field_name else None
-    text = domain_result.get("text", "") if domain_result else ""
+    result = state.get(field_name, "") if field_name else ""
 
-    final_response = text if text else _FALLBACK_MESSAGE
-    return {"final_response": final_response}
+    final_response = result if result else _FALLBACK_MESSAGE
+    return {"final_response": final_response}   # 변경된 키만 반환 (지침서 18-2)
