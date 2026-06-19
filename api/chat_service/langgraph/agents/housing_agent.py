@@ -1,4 +1,5 @@
 import logging
+from contextvars import ContextVar
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
@@ -27,10 +28,12 @@ def _pick_policy_fields(metadata: dict) -> dict:
 ##############################################################
 # 도구 정의
 ##############################################################
-# 에이전트 실행 중 호출된 search_policy의 raw 결과를 노드 레벨에서 회수하기 위해
-# 모듈 전역에 마지막 호출 결과를 캐싱한다. (LangChain agent는 tool의 raw return을 외부로 직접 노출하지 않음)
-# 동시 호출 안전성은 도메인 에이전트가 노드 1회 호출당 1회 search_policy 호출이라는 가정에 의존.
-_last_search_policies: list[dict] = []
+# search_policy의 raw 정책 결과를 노드 레벨로 회수하기 위한 채널.
+# LangChain create_agent는 tool의 raw return을 외부에 직접 노출하지 않으므로 우회 통로 필요.
+# ContextVar는 asyncio task별로 자동 격리되어 동시 호출 시에도 결과가 섞이지 않음.
+_last_search_policies: ContextVar[list[dict]] = ContextVar(
+    "housing_last_search_policies", default=[]
+)
 
 
 @tool
@@ -42,9 +45,6 @@ async def search_policy(query: str) -> str:
     Returns:
         str: 검색된 정책 내용
     """
-    global _last_search_policies
-    _last_search_policies = []
-
     vectorstore = PGVector(
         embeddings=init_embeddings(model="openai:text-embedding-3-large"),
         collection_name=PGVECTOR_COLLECTION_NAME,
@@ -57,9 +57,10 @@ async def search_policy(query: str) -> str:
     documents = [(doc, dist) for doc, dist in results if dist <= SIMILARITY_DISTANCE_THRESHOLD]
 
     if not documents:
+        _last_search_policies.set([])
         return f"'{query}' 관련 {_CATEGORY} 정책을 찾을 수 없습니다."
 
-    _last_search_policies = [_pick_policy_fields(doc.metadata) for doc, _ in documents]
+    _last_search_policies.set([_pick_policy_fields(doc.metadata) for doc, _ in documents])
 
     lines = []
     for idx, (doc, _dist) in enumerate(documents, 1):
@@ -82,15 +83,18 @@ class HousingAgent:
         )
 
     async def run(self, question: str) -> DomainResult:
-        global _last_search_policies
-        _last_search_policies = []   # 호출 시작 시 초기화
+        token = _last_search_policies.set([])   # 이 task 컨텍스트만 초기화
+        try:
+            result = await self.agent.ainvoke(
+                {"messages": [{"role": "user", "content": question}]}
+            )
+            policies = _last_search_policies.get()
+        finally:
+            _last_search_policies.reset(token)
 
-        result = await self.agent.ainvoke(
-            {"messages": [{"role": "user", "content": question}]}
-        )
         text = result["messages"][-1].content
-        policies = list(_last_search_policies)   # 스냅샷
         source = "rag" if policies else "none"
         return DomainResult(text=text, policies=policies, category=_CATEGORY, source=source)
+
 
 HousingAgentDep = Annotated[HousingAgent, Depends(HousingAgent)]
