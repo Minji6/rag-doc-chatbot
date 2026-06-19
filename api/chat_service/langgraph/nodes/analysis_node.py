@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated
+from typing import Annotated, cast
 from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
 from ..state import ShareState
@@ -43,10 +43,12 @@ _SYSTEM_PROMPT = f"""당신은 청년정책 챗봇의 의도 분석기입니다.
 
 
 async def analysis_node(state: ShareState) -> dict:
-    logger.info("의도 분석 노드 실행 — user_role=%s", state["user_role"])
-    analysis: InquiryAnalysis = await _structured_model.ainvoke([
+    profile = state["user_profile"]
+    logger.info("의도 분석 노드 실행 — user_role=%s, user_profile=%s",
+                state["user_role"], f"user_id={profile['user_id']}" if profile else "없음")
+    analysis = cast(InquiryAnalysis, await _structured_model.ainvoke([
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": state["user_inquiry"]},
-    ])
+    ]))
     logger.info("분류 결과 — category=%s, inquiry_type=%s", analysis.category, analysis.inquiry_type)
     return {"category": analysis.category, "inquiry_type": analysis.inquiry_type}
