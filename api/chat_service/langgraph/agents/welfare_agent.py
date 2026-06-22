@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import logging
 from typing import Annotated
 from fastapi import Depends
@@ -11,6 +12,11 @@ from ..constants import (
     PGVECTOR_COLLECTION_NAME,
     SIMILARITY_DISTANCE_THRESHOLD,
 )
+=======
+from ._stub_agent import StubAgent
+from ..constants import AGENT_CATEGORY
+
+>>>>>>> 98545a4a781a6b61365e601ac9024a5e0e585884
 
 # 로거 생성
 logger = logging.getLogger(__name__)
@@ -60,6 +66,7 @@ async def search_policy(query: str) -> str:
 ##############################################################
 class WelfareAgent:
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
+<<<<<<< HEAD
         self.logger = logging.getLogger(f"{__name__}.WelfareAgent")
         self.agent = create_agent(
             model=model,
@@ -75,3 +82,6 @@ class WelfareAgent:
 
 
 WelfareAgentDep = Annotated[WelfareAgent, Depends(WelfareAgent)]
+=======
+        super().__init__(domain_label="복지문화", category=AGENT_CATEGORY["welfare"])
+>>>>>>> 98545a4a781a6b61365e601ac9024a5e0e585884

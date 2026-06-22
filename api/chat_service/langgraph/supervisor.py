@@ -4,8 +4,8 @@ from typing import Annotated
 from fastapi import Depends
 from langgraph.graph import END, START, StateGraph
 
-from .state import ShareState
-from .constants import CATEGORY_ROUTING
+from .state import ShareState, empty_domain_result
+from .constants import AGENT_CATEGORY, CATEGORY_ROUTING
 from .nodes.analysis_node import analysis_node
 from .nodes.housing_node import housing_node
 from .nodes.employment_node import employment_node
@@ -54,19 +54,26 @@ class ChatbotSupervisor:
 
         self.workflow = graph.compile()
 
-    async def run(self, user_inquiry: str, user_role: str = "guest", user_profile: dict | None = None) -> str:
+    async def run(
+        self, 
+        user_inquiry: str, 
+        user_role: str = "guest", 
+        user_profile: dict | None = None,
+        messages: list | None = None, # 이전 대화 맥락 (없으면 첫 대화)
+    ) -> str:
+        
         user_profile = user_profile or {}
         initial_state = ShareState(
-            messages=[],
+            messages= messages or [],
             user_inquiry=user_inquiry,
             user_role=user_role,
             user_profile=user_profile,
             category="",
             inquiry_type="",
-            housing_result="",
-            employment_result="",
-            education_result="",
-            welfare_result="",
+            housing_result=empty_domain_result(AGENT_CATEGORY["housing"]),
+            employment_result=empty_domain_result(AGENT_CATEGORY["employment"]),
+            education_result=empty_domain_result(AGENT_CATEGORY["education"]),
+            welfare_result=empty_domain_result(AGENT_CATEGORY["welfare"]),
             final_response="",
         )
         final_state = await self.workflow.ainvoke(initial_state)

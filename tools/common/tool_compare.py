@@ -1,5 +1,4 @@
 import logging
-from datetime import date
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
@@ -28,28 +27,7 @@ async def compare_policies(policy_list: list[dict]) -> str:
         lines.append(f"  지원 대상 : {policy.get('addAplyQlfcCndCn', '정보 없음')}")
         lines.append(f"  지원 내용 : {policy.get('plcySprtCn', '정보 없음')}")
 
-        # D-day 표시
-        deadline = policy.get('bizPrdEndYmd', '')
-        period_type = policy.get('aplyPrdSeCd', '')
-        if period_type == "상시":
-            dday_str = "상시접수"
-        elif deadline:
-            today = date.today()
-            try:
-                deadline_date = date(int(deadline[:4]), int(deadline[4:6]), int(deadline[6:8]))
-                diff = (deadline_date - today).days
-                if diff < 0:
-                    dday_str = "마감"
-                elif diff == 0:
-                    dday_str = "오늘 마감"
-                else:
-                    dday_str = f"D-{diff}"
-            except (ValueError, IndexError):
-                dday_str = deadline
-        else:
-            dday_str = "정보 없음"
-
-        lines.append(f"  마감일    : {dday_str}")
+        lines.append(f"  마감일    : {policy.get('dday', '정보 없음')}")
         apply_url = policy.get('aplyUrlAddr', '')
         lines.append(f"  신청 URL  : {apply_url if apply_url else '정보 없음'}")
         lines.append("-" * 60)
@@ -73,7 +51,6 @@ async def policy_priority_score(user_profile: dict, policy_list: list[dict]) -> 
     logger.info(f"policy_priority_score 실행: 정책 수={len(policy_list)}")
 
     user_age = user_profile.get("age")
-    today = date.today()
     scored = []
 
     for policy in policy_list:
@@ -98,33 +75,32 @@ async def policy_priority_score(user_profile: dict, policy_list: list[dict]) -> 
         else:
             reasons.append("나이 조건 불일치(+0)")
 
-        # 2. 마감 임박도 (40점)
-        period_type = policy.get("aplyPrdSeCd", "")
-        deadline = policy.get("bizPrdEndYmd", "")
-        if period_type == "상시":
+        # 2. 마감 임박도 (40점) — calculate_dday가 미리 계산한 dday 필드 활용
+        dday = policy.get("dday", "")
+        if dday == "상시접수":
             score += 20
             reasons.append("상시접수(+20)")
-        elif deadline:
+        elif dday == "마감" or dday == "":
+            reasons.append("마감(+0)")
+        elif dday == "오늘 마감":
+            score += 40
+            reasons.append("오늘 마감(+40)")
+        else:
+            # "D-{숫자}" 파싱
             try:
-                deadline_date = date(int(deadline[:4]), int(deadline[4:6]), int(deadline[6:8]))
-                diff = (deadline_date - today).days
-                if diff < 0:
-                    reasons.append("마감(+0)")
-                elif diff <= 7:
+                diff = int(dday.replace("D-", ""))
+                if diff <= 7:
                     score += 40
-                    reasons.append(f"마감 임박 D-{diff}(+40)")
+                    reasons.append(f"마감 임박 {dday}(+40)")
                 elif diff <= 30:
                     score += 25
-                    reasons.append(f"마감 D-{diff}(+25)")
+                    reasons.append(f"마감 {dday}(+25)")
                 else:
                     score += 10
-                    reasons.append(f"마감 D-{diff}(+10)")
-            except (ValueError, IndexError):
+                    reasons.append(f"마감 {dday}(+10)")
+            except ValueError:
                 score += 10
-                reasons.append("마감일 파싱 불가(+10)")
-        else:
-            score += 10
-            reasons.append("마감일 정보 없음(+10)")
+                reasons.append("마감일 정보 없음(+10)")
 
         # 3. 취업 상태 조건 매칭 (30점)
         # jobCd는 한글 텍스트로 저장됨 (예: "제한없음", "미취업자")
