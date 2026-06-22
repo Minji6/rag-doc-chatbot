@@ -3,6 +3,7 @@ import re
 from langchain.tools import tool
 
 from tools.common.tool_rag_search import search_policy_impl, search_web_supplement_impl
+from api.chat_service.langgraph.constants import POLICY_METADATA_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ async def answer_with_priority(query: str, category: str) -> str:
         )
 
         # Step 4: 결과 조합 (웹 결과를 "[LLM]\n..." 형식으로 포장)
+        # Note: RAG/WEB 결과는 tool_rag_search에서 이미 포맷됨 (POLICY_METADATA_FIELDS 준수)
         combined_result = f"[RAG]\n{rag_lines}"
 
         if "웹 검색 결과가 없습니다" not in web_result and "[오류]" not in web_result:

@@ -1,16 +1,29 @@
 import logging
 import re
+from contextvars import ContextVar
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 from langchain_core.messages import ToolMessage
 from langchain.tools import tool
 from ._stub_agent import StubAgent
-from ..constants import AGENT_CATEGORY
+from ..constants import AGENT_CATEGORY, POLICY_METADATA_FIELDS
 
 from tools.common.tool_priority import answer_with_priority
 from api.chat_service.langgraph.state import DomainResult
 from api.chat_service.langgraph.constants import AGENT_CATEGORY
+
+logger = logging.getLogger(__name__)
+
+# ContextVar로 tool에서 반환한 정책 메타를 저장
+_last_search_policies: ContextVar[list[dict]] = ContextVar(
+    "employment_last_search_policies", default=[]
+)
+
+
+def _pick_policy_fields(metadata: dict) -> dict:
+    """PGVector 메타에서 화이트리스트 필드만 추려 dict 생성."""
+    return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
 
 class EmploymentAgent:
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
@@ -137,29 +150,34 @@ answer_with_priority(query, category, k)
     
     async def run(self, query: str) -> DomainResult:
         """사용자 질문을 처리하고 정책 검색 결과를 DomainResult로 반환합니다."""
+        # ContextVar 초기화 (이 task 컨텍스트만)
+        token = _last_search_policies.set([])
         try:
             result = await self.agent.ainvoke(
                 {"messages": [{"role": "user", "content": query}]}
             )
-            
+
             # agent.ainvoke 반환값에서 정보 추출
             messages = result["messages"]
             text = messages[-1].content if messages else ""
-            
-            # 메시지 히스토리에서 정책 메타 파싱
-            policies, source = self._parse_policies_from_messages(messages)
-            
+
+            # ContextVar에서 정책 메타 추출
+            policies = _last_search_policies.get()
+
+            # 소스 판정
+            source = "rag" if policies else "none"
+
             self.logger.info(
                 f"일자리 에이전트 완료 - source={source}, policies={len(policies)}건"
             )
-            
+
             return DomainResult(
                 text=text,
                 policies=policies,
                 category=self.category,
                 source=source
             )
-        
+
         except Exception as e:
             self.logger.error(f"일자리 에이전트 실행 실패: {e}")
             return DomainResult(
@@ -168,5 +186,8 @@ answer_with_priority(query, category, k)
                 category=self.category,
                 source="none"
             )
+
+        finally:
+            _last_search_policies.reset(token)
 
 EmploymentAgentDep = Annotated[EmploymentAgent, Depends(EmploymentAgent)]
