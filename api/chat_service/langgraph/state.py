@@ -32,6 +32,11 @@ class ShareState(TypedDict):
     category: str          # 분야: 주거 / 취업 / 교육 / 복지 (constants.py 참고)
     inquiry_type: str      # 의도: 검색 / 추천 / 상세조회 / 비교 (constants.py 참고)
 
+    # 검색 노드 → 생성 노드 핸드오프 채널 (검색/생성 분리 구조)
+    # 검색 노드가 채우고, 도메인 생성 노드가 읽음. 한 요청당 한 도메인만 실행되므로 충돌 없음.
+    knowledge_base: str    # 검색 노드가 만든 정책 텍스트 (생성 노드가 답변 근거로 사용)
+    policies: list[dict]   # 검색 노드가 추린 raw 정책 메타 (gather 후처리용)
+
     housing_result: DomainResult        # 주거 에이전트 답변
     employment_result: DomainResult     # 취업 에이전트 답변
     education_result: DomainResult      # 교육 에이전트 답변
