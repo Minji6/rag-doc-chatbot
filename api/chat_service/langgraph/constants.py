@@ -48,6 +48,7 @@ POLICY_METADATA_FIELDS = (
     "plcyExplnCn",   # 정책 설명
     "plcySprtCn",    # 지원 내용
     "ptcpPrpTrgtCn", # 참여 대상
+    "addAplyQlfcCndCn", # 추가 신청 자격 조건
     "aplyUrlAddr",   # 신청 URL
     "aplyPrdSeCd",   # 신청기간 구분 (특정기간/상시/마감)
     "aplyYmd",       # 신청 기간

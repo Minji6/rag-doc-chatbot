@@ -50,7 +50,8 @@ async def policy_priority_score(user_profile: dict, policy_list: list[dict]) -> 
     """
     logger.info(f"policy_priority_score 실행: 정책 수={len(policy_list)}")
 
-    user_age = user_profile.get("age")
+    from tools.welfare.tool_user_profile import calc_age
+    user_age = user_profile.get("age") or calc_age(user_profile.get("birth_date", ""))
     scored = []
 
     for policy in policy_list:
@@ -104,7 +105,7 @@ async def policy_priority_score(user_profile: dict, policy_list: list[dict]) -> 
 
         # 3. 취업 상태 조건 매칭 (30점)
         # jobCd는 한글 텍스트로 저장됨 (예: "제한없음", "미취업자")
-        user_job = user_profile.get("job_status", "")
+        user_job = user_profile.get("jobcd", "")
         policy_job = policy.get("jobCd", "제한없음")
         if policy_job == "제한없음" or not policy_job:
             score += 30
