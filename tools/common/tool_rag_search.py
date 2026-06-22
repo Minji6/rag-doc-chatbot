@@ -98,7 +98,7 @@ async def search_web_supplement_impl(
             search_depth="basic",
         )
 
-        results: list[dict] = tavily_search.invoke(query)
+        results = await tavily_search.ainvoke({"query": query})
 
         exclude_set = set(exclude_titles)
         collected: list[str] = []
