@@ -1,22 +1,34 @@
 import logging
+from contextvars import ContextVar
 from langchain.tools import tool
 from langchain_postgres import PGVector
 from langchain.embeddings import init_embeddings
 from langchain_community.tools.tavily_search import TavilySearchResults
-
+from langchain_tavily import TavilySearch
 from api.common.sqlalchemy_conf import engine
 from api.chat_service.langgraph.constants import (
     PGVECTOR_COLLECTION_NAME,
     SIMILARITY_DISTANCE_THRESHOLD,
+    POLICY_METADATA_FIELDS,
 )
 
 logger = logging.getLogger(__name__)
 
+_last_rag_policies: ContextVar[list[dict]] = ContextVar("last_rag_policies", default=[])
+
+
+def _pick_policy_fields(metadata: dict) -> dict:
+    return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
+
 
 async def search_policy_impl(
     query: str, category: str, k: int = 5
-) -> str:
-    """비동기 PGVector 검색 구현 (tool_priority.py에서 직접 호출용)."""
+) -> tuple[str, list[dict]]:
+    """비동기 PGVector 검색 구현 (tool_priority.py에서 직접 호출용).
+
+    Returns:
+        tuple: (포맷된 텍스트, POLICY_METADATA_FIELDS 준수 structured metadata)
+    """
     vectorstore = PGVector(
         embeddings=init_embeddings("openai:text-embedding-3-large"),
         collection_name=PGVECTOR_COLLECTION_NAME,
@@ -36,9 +48,13 @@ async def search_policy_impl(
         if score <= SIMILARITY_DISTANCE_THRESHOLD
     ]
 
+    # 구조화된 metadata 추출 (POLICY_METADATA_FIELDS 준수)
+    filtered_metadata = [_pick_policy_fields(doc.metadata) for doc, _ in filtered]
+    _last_rag_policies.set(filtered_metadata)
+
     # 결과 포맷팅
     if not filtered:
-        return "[RAG_FALLBACK]"
+        return "[RAG_FALLBACK]", []
 
     lines: list[str] = []
     for i, (doc, _) in enumerate(filtered, start=1):
@@ -60,7 +76,7 @@ async def search_policy_impl(
     else:
         logger.info(f"RAG 검색 완료: {category}, {len(filtered)}건")
 
-    return result_text
+    return result_text, filtered_metadata
 
 
 @tool

@@ -1,8 +1,9 @@
 import logging
 import re
+import json
 from langchain.tools import tool
 
-from tools.common.tool_rag_search import search_policy_impl, search_web_supplement_impl
+from tools.common.tool_rag_search import search_policy_impl, search_web_supplement_impl, _last_rag_policies
 from api.chat_service.langgraph.constants import POLICY_METADATA_FIELDS
 
 logger = logging.getLogger(__name__)
@@ -47,19 +48,23 @@ async def answer_with_priority(query: str, category: str) -> str:
         category: 정책 분야 ("복지문화" / "일자리" / "주거" / "교육")
 
     Returns:
-        str: "[RAG]\n정책들" 또는 "[RAG]\n정책들\n\n[LLM]\n웹정책들"
+        str: JSON 문자열 {"text": "...", "policies": [...]}
     """
     try:
         logger.info(f"answer_with_priority 호출: query='{query}', category='{category}'")
 
-        # Step 1: RAG 검색 (1순위)
-        rag_result = await search_policy_impl(query, category)
+        # Step 1: RAG 검색 (1순위) - 반환값으로 structured metadata 받음
+        rag_result, rag_policies = await search_policy_impl(query, category)
 
         # Step 2: [RAG_FALLBACK] 신호 확인
         if "[RAG_FALLBACK]" not in rag_result:
             # RAG 성공, 부족분 없음
-            logger.info(f"RAG 충분 - category={category}")
-            return f"[RAG]\n{rag_result}"
+            logger.info(f"RAG 충분 - category={category}, {len(rag_policies)}건")
+            response_text = f"[RAG]\n{rag_result}"
+            return json.dumps({
+                "text": response_text,
+                "policies": rag_policies
+            }, ensure_ascii=False)
 
         # RAG 부족 → 웹 보충 필요
         logger.info(f"RAG 부족 - 웹 보충 시작 - category={category}")
@@ -78,7 +83,6 @@ async def answer_with_priority(query: str, category: str) -> str:
         )
 
         # Step 4: 결과 조합 (웹 결과를 "[LLM]\n..." 형식으로 포장)
-        # Note: RAG/WEB 결과는 tool_rag_search에서 이미 포맷됨 (POLICY_METADATA_FIELDS 준수)
         combined_result = f"[RAG]\n{rag_lines}"
 
         if "웹 검색 결과가 없습니다" not in web_result and "[오류]" not in web_result:
@@ -87,8 +91,14 @@ async def answer_with_priority(query: str, category: str) -> str:
         else:
             logger.info(f"웹 보충 결과 없음: {web_result}")
 
-        return combined_result
+        return json.dumps({
+            "text": combined_result,
+            "policies": rag_policies
+        }, ensure_ascii=False)
 
     except Exception as e:
         logger.error(f"answer_with_priority 실행 중 오류: {str(e)}")
-        return f"[오류] 답변 생성 중 문제가 발생했습니다: {str(e)}"
+        return json.dumps({
+            "text": f"[오류] 답변 생성 중 문제가 발생했습니다: {str(e)}",
+            "policies": []
+        }, ensure_ascii=False)

@@ -1,13 +1,13 @@
 import logging
 import re
-from contextvars import ContextVar
+import json
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
-from langchain_core.messages import ToolMessage
 from langchain.tools import tool
+from langchain_core.messages import ToolMessage
 from ._stub_agent import StubAgent
-from ..constants import AGENT_CATEGORY, POLICY_METADATA_FIELDS
+from ..constants import AGENT_CATEGORY
 
 from tools.common.tool_priority import answer_with_priority
 from api.chat_service.langgraph.state import DomainResult
@@ -15,21 +15,11 @@ from api.chat_service.langgraph.constants import AGENT_CATEGORY
 
 logger = logging.getLogger(__name__)
 
-# ContextVar로 tool에서 반환한 정책 메타를 저장
-_last_search_policies: ContextVar[list[dict]] = ContextVar(
-    "employment_last_search_policies", default=[]
-)
-
-
-def _pick_policy_fields(metadata: dict) -> dict:
-    """PGVector 메타에서 화이트리스트 필드만 추려 dict 생성."""
-    return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
-
 class EmploymentAgent:
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
         self.logger = logging.getLogger(f"{__name__}.EmploymentAgent")
         self.category = AGENT_CATEGORY["employment"]  # "일자리"
-        
+
         self.agent = create_agent(
             model=model,
             tools=[answer_with_priority],
@@ -56,102 +46,27 @@ answer_with_priority(query, category, k)
 - 불확실한 정보는 "확인이 필요합니다"라고 명시
             """
         )
-    
-    def _parse_policies_from_messages(self, messages: list) -> tuple[list[dict], str]:
+
+    def _parse_policies_from_tool_result(self, tool_result: str) -> list[dict]:
         """
-        agent의 메시지 히스토리에서 도구 호출 결과를 파싱하여 정책 메타 추출.
-
-        새로운 포맷:
-        - "[RAG]\n..." : RAG 결과 (source="rag")
-        - "[LLM]\n..." : WEB 결과를 LLM 형식으로 포장 (source="web")
-
-        Returns:
-            (policies, source): 정책 메타 리스트와 출처 ("rag" / "web" / "none")
+        tool 반환값(JSON)에서 structured metadata를 파싱합니다.
+        tool_result: answer_with_priority에서 반환한 JSON 문자열
         """
-        policies: list[dict] = []
-        source = "none"
+        self.logger.info(f"[DEBUG] tool_result 타입: {type(tool_result)}, 길이: {len(str(tool_result))}")
+        self.logger.info(f"[DEBUG] tool_result[:200]: {str(tool_result)[:200]}")
 
-        for msg in messages:
-            if isinstance(msg, ToolMessage):
-                tool_result = msg.content
+        try:
+            data = json.loads(tool_result)
+            policies = data.get("policies", [])
+            self.logger.info(f"[DEBUG] JSON 파싱 성공, policies={len(policies)}건")
+            return policies
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            self.logger.warning(f"[DEBUG] tool 반환값 파싱 실패: {str(e)}")
+            self.logger.warning(f"[DEBUG] 전체 tool_result: {tool_result}")
+            return []
 
-                # "[RAG]" 또는 "[LLM]" 신호로 섹션 분리
-                rag_section = ""
-                llm_section = ""
-
-                # "[RAG]\n..." 추출
-                if "[RAG]\n" in tool_result:
-                    rag_match = re.search(r"\[RAG\]\n(.+?)(?:\n\n\[LLM\]|\Z)", tool_result, re.DOTALL)
-                    if rag_match:
-                        rag_section = rag_match.group(1)
-
-                # "[LLM]\n..." 추출
-                if "[LLM]\n" in tool_result:
-                    llm_match = re.search(r"\[LLM\]\n(.+)", tool_result, re.DOTALL)
-                    if llm_match:
-                        llm_section = llm_match.group(1)
-
-                # RAG 섹션 파싱
-                if rag_section:
-                    policy_blocks = [block.strip() for block in rag_section.split("\n\n") if block.strip() and "총" not in block]
-
-                    for block in policy_blocks:
-                        lines = block.split("\n")
-                        if not lines:
-                            continue
-
-                        first_line = lines[0]
-                        match = re.match(r"\[\d+\]\s+(.+)", first_line)
-                        if match:
-                            policy_name = match.group(1)
-                            policy_meta = {"plcyNm": policy_name}
-
-                            for line in lines[1:]:
-                                if line.startswith("설명:"):
-                                    policy_meta["plcyExplnCn"] = line.replace("설명:", "").strip()
-                                elif line.startswith("지원내용:"):
-                                    policy_meta["plcySprtCn"] = line.replace("지원내용:", "").strip()
-                                elif line.startswith("신청방법:"):
-                                    policy_meta["plcyAplyMthdCn"] = line.replace("신청방법:", "").strip()
-
-                            policies.append(policy_meta)
-                            if source == "none":
-                                source = "rag"
-
-                # LLM 섹션 파싱 (WEB 결과)
-                if llm_section:
-                    policy_blocks = [block.strip() for block in llm_section.split("\n\n") if block.strip()]
-
-                    for block in policy_blocks:
-                        lines = block.split("\n")
-                        if not lines:
-                            continue
-
-                        first_line = lines[0]
-                        match = re.match(r"\[\d+\]\s+(.+)", first_line)
-                        if match:
-                            policy_meta = {}
-
-                            for line in lines:
-                                if line.startswith("["):
-                                    match = re.match(r"\[\d+\]\s+(.+)", line)
-                                    if match:
-                                        policy_meta["title"] = match.group(1)
-                                elif line.startswith("출처:"):
-                                    policy_meta["url"] = line.replace("출처:", "").strip()
-                                elif line.startswith("요약:"):
-                                    policy_meta["content"] = line.replace("요약:", "").strip()
-
-                            if policy_meta:
-                                policies.append(policy_meta)
-                                source = "web"  # WEB이 있으면 source="web"으로 우선
-
-        return policies, source
-    
     async def run(self, query: str) -> DomainResult:
         """사용자 질문을 처리하고 정책 검색 결과를 DomainResult로 반환합니다."""
-        # ContextVar 초기화 (이 task 컨텍스트만)
-        token = _last_search_policies.set([])
         try:
             result = await self.agent.ainvoke(
                 {"messages": [{"role": "user", "content": query}]}
@@ -161,8 +76,13 @@ answer_with_priority(query, category, k)
             messages = result["messages"]
             text = messages[-1].content if messages else ""
 
-            # ContextVar에서 정책 메타 추출
-            policies = _last_search_policies.get()
+            # tool 메시지에서 structured metadata 추출
+            policies = []
+            for msg in messages:
+                if isinstance(msg, ToolMessage):
+                    policies = self._parse_policies_from_tool_result(msg.content)
+                    if policies:
+                        break
 
             # 소스 판정
             source = "rag" if policies else "none"
@@ -186,8 +106,5 @@ answer_with_priority(query, category, k)
                 category=self.category,
                 source="none"
             )
-
-        finally:
-            _last_search_policies.reset(token)
 
 EmploymentAgentDep = Annotated[EmploymentAgent, Depends(EmploymentAgent)]
