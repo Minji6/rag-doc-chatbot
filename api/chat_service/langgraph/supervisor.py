@@ -9,6 +9,7 @@ from .constants import AGENT_CATEGORY, CATEGORY_ROUTING
 from .nodes.analysis_node import analysis_node
 from .nodes.housing_node import housing_node
 from .nodes.employment_node import employment_node
+from .nodes.education_search_node import education_search_node
 from .nodes.education_node import education_node
 from .nodes.welfare_node import welfare_node
 from .nodes.route_node_fun import route_node_fun
@@ -29,24 +30,30 @@ class ChatbotSupervisor:
         graph.add_node("analysis", analysis_node)
         graph.add_node("housing", housing_node)
         graph.add_node("employment", employment_node)
-        graph.add_node("education", education_node)
+        graph.add_node("education_search", education_search_node)  # 교육: 검색 노드
+        graph.add_node("education", education_node)                # 교육: 생성 노드
         graph.add_node("welfare", welfare_node)
         graph.add_node("gather", gather_node)
 
         # 시작 → 의도 분석
         graph.add_edge(START, "analysis")
 
-        # 분석 결과(category)에 따라 4개 도메인 노드 중 하나로 분기
-        # CATEGORY_ROUTING의 값(employment/housing/education/welfare)을
-        # 그대로 노드명으로 매핑 — route_node_fun이 반환하는 값과 1:1 대응
+        # 분석 결과(category)에 따라 도메인 노드로 분기.
+        # 교육은 검색/생성을 분리했으므로 "education" 라우팅을 검색 노드로 보낸다.
+        # (education_search → education → gather)
         node_names = set(CATEGORY_ROUTING.values())
+        route_map = {name: name for name in node_names}
+        route_map["education"] = "education_search"
         graph.add_conditional_edges(
             "analysis",
             route_node_fun,
-            {name: name for name in node_names},
+            route_map,
         )
 
-        # 도메인 노드 4개 → 전부 gather로 모임 (명세서 개요 구조)
+        # 교육 검색 노드 → 교육 생성 노드
+        graph.add_edge("education_search", "education")
+
+        # 도메인 노드 → 전부 gather로 모임 (명세서 개요 구조)
         for node_name in node_names:
             graph.add_edge(node_name, "gather")
 
@@ -70,6 +77,8 @@ class ChatbotSupervisor:
             user_profile=user_profile,
             category="",
             inquiry_type="",
+            knowledge_base="",
+            policies=[],
             housing_result=empty_domain_result(AGENT_CATEGORY["housing"]),
             employment_result=empty_domain_result(AGENT_CATEGORY["employment"]),
             education_result=empty_domain_result(AGENT_CATEGORY["education"]),
