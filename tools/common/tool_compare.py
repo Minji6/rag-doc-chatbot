@@ -1,5 +1,5 @@
 import logging
-from langchain_core.tools import tool
+from langchain.tools import tool
 
 logger = logging.getLogger(__name__)
 
