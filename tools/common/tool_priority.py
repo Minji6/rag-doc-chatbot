@@ -52,7 +52,7 @@ async def answer_with_priority(query: str, category: str) -> str:
         logger.info(f"answer_with_priority 호출: query='{query}', category='{category}'")
 
         # Step 1: RAG 검색 (1순위)
-        rag_result = await search_policy_impl(query, category, k=5)
+        rag_result = await search_policy_impl(query, category)
 
         # Step 2: [RAG_FALLBACK] 신호 확인
         if "[RAG_FALLBACK]" not in rag_result:
