@@ -1,5 +1,5 @@
 from typing import Any
-from langchain_core.tools import tool
+from langchain.tools import tool
 
 @tool
 async def answer_with_priority(query: str, category: str) -> str:
