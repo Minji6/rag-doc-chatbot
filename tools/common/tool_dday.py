@@ -1,5 +1,5 @@
 from datetime import date
-from langchain_core.tools import tool
+from langchain.tools import tool
 
 @tool
 def calculate_dday(deadline: str, apply_period_type: str) -> str:

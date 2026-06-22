@@ -1,5 +1,5 @@
 from typing import Any
-from langchain_core.tools import tool
+from langchain.tools import tool
 
 @tool(return_direct=True)
 async def compare_policies(policy_list: list[dict]) -> str:

@@ -1,4 +1,4 @@
-from langchain_core.tools import tool
+from langchain.tools import tool
 from ._stub_agent import StubAgent
 from ..constants import AGENT_CATEGORY
 
