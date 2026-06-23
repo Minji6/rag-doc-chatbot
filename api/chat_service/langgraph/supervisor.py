@@ -8,6 +8,7 @@ from .state import ShareState, empty_domain_result
 from .constants import AGENT_CATEGORY, CATEGORY_ROUTING
 from .nodes.analysis_node import analysis_node
 from .nodes.housing_node import housing_node
+from .nodes.employment_search_node import employment_search_node
 from .nodes.employment_node import employment_node
 from .nodes.education_search_node import education_search_node
 from .nodes.education_node import education_node
@@ -29,6 +30,7 @@ class ChatbotSupervisor:
         # 노드 등록
         graph.add_node("analysis", analysis_node)
         graph.add_node("housing", housing_node)
+        graph.add_node("employment_search", employment_search_node)
         graph.add_node("employment", employment_node)
         graph.add_node("education_search", education_search_node)  # 교육: 검색 노드
         graph.add_node("education", education_node)                # 교육: 생성 노드
@@ -39,19 +41,22 @@ class ChatbotSupervisor:
         graph.add_edge(START, "analysis")
 
         # 분석 결과(category)에 따라 도메인 노드로 분기.
-        # 교육은 검색/생성을 분리했으므로 "education" 라우팅을 검색 노드로 보낸다.
+        # 교육/취업은 검색/생성을 분리했으므로 각 검색 노드로 먼저 보낸다.
         # (education_search → education → gather)
+        # (employment_search → employment → gather)
         node_names = set(CATEGORY_ROUTING.values())
         route_map = {name: name for name in node_names}
         route_map["education"] = "education_search"
+        route_map["employment"] = "employment_search"
         graph.add_conditional_edges(
             "analysis",
             route_node_fun,
             route_map,
         )
 
-        # 교육 검색 노드 → 교육 생성 노드
+        # 검색 노드 → 생성 노드
         graph.add_edge("education_search", "education")
+        graph.add_edge("employment_search", "employment")
 
         # 도메인 노드 → 전부 gather로 모임 (명세서 개요 구조)
         for node_name in node_names:
