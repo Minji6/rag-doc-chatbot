@@ -7,7 +7,7 @@ from langchain.tools import tool
 from langchain_postgres import PGVector
 from langchain.embeddings import init_embeddings
 from api.common.sqlalchemy_conf import engine
-from ..state import DomainResult, empty_domain_result
+from ..state import DomainResult
 from ..constants import (
     AGENT_CATEGORY,
     PGVECTOR_COLLECTION_NAME,
