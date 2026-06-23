@@ -57,4 +57,10 @@ POLICY_METADATA_FIELDS = (
     "aplyYmd",       # 신청 기간
     "bizPrdBgngYmd", # 사업 시작일
     "bizPrdEndYmd",  # 사업 종료일
+    # 주거 정책 자격 진단용 필드 (housing_search_node에서 사용)
+    "sprtTrgtMinAge",    # 최소 나이
+    "sprtTrgtMaxAge",    # 최대 나이
+    "sprtTrgtAgeLmtYn",  # 연령 제한 여부 (Y/N)
+    "zipCd",             # 지역 코드
+    "mrgSttsCd",         # 혼인 상태 코드
 )

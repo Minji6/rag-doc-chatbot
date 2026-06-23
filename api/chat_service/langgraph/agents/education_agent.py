@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
-from ..constants import AGENT_CATEGORY
+from ..constants import AGENT_CATEGORY, INQUIRY_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ class EducationAgent:
         }
 
     async def run(
-        self, inquiry: str, knowledge: str, user_profile: dict | None = None, inquiry_type: str = "검색"
+        self, inquiry: str, knowledge: str, user_profile: dict | None = None, inquiry_type: str = INQUIRY_TYPES[0]
     ) -> str:
         """검색된 정책(knowledge)으로 답변을 생성한다. (검색은 하지 않음)
 
@@ -165,7 +165,7 @@ class EducationAgent:
         Returns:
             str: 생성된 사용자용 답변 텍스트
         """
-        agent = self._agents.get(inquiry_type, self._agents["검색"])
+        agent = self._agents.get(inquiry_type, self._agents[INQUIRY_TYPES[0]])
 
         prompt = (
             "다음 정보를 바탕으로 교육 정책 답변을 작성하세요.\n\n"
