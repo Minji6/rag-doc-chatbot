@@ -19,6 +19,15 @@ _MIN_RAG_COUNT = 5  # RAG 결과가 이 수 미만이면 웹 검색으로 보완
 # 유틸
 ##############################################################
 
+def _strip_code_fence(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text.rsplit("```", 1)[0]
+    return text.strip()
+
+
 def _calc_age(birth_date_str: str) -> int | None:
     try:
         bd = date.fromisoformat(birth_date_str)
@@ -42,7 +51,7 @@ async def _normalize_web_policies(web_text: str) -> list[dict]:
             )),
             HumanMessage(content=web_text),
         ])
-        text = str(result.content).strip().strip("```json").strip("```").strip()
+        text = _strip_code_fence(str(result.content))
         policies = json.loads(text)
         if not isinstance(policies, list):
             raise ValueError("반환값이 배열이 아님")

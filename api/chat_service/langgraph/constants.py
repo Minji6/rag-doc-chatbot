@@ -54,4 +54,11 @@ POLICY_METADATA_FIELDS = (
     "aplyYmd",       # 신청 기간
     "bizPrdBgngYmd", # 사업 시작일
     "bizPrdEndYmd",  # 사업 종료일
+    # check_eligibility 자격 검증용
+    "sprtTrgtMinAge",   # 지원 대상 최소 나이
+    "sprtTrgtMaxAge",   # 지원 대상 최대 나이
+    "jobCd",            # 취업 상태 조건
+    "srhmhldIncmCd",    # 소득 분위 조건
+    "plcyAplyRgnCd",    # 신청 지역 조건
+    "schoolcd",         # 학력 조건
 )
