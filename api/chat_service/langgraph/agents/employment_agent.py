@@ -1,172 +1,89 @@
 import logging
-import re
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
-from langchain_core.messages import ToolMessage
-from langchain.tools import tool
-from ._stub_agent import StubAgent
 from ..constants import AGENT_CATEGORY
 
-from tools.common.tool_priority import answer_with_priority
-from api.chat_service.langgraph.state import DomainResult
-from api.chat_service.langgraph.constants import AGENT_CATEGORY
+logger = logging.getLogger(__name__)
+
+_CATEGORY = AGENT_CATEGORY["employment"]
+
 
 class EmploymentAgent:
+    """
+    취업 Agent — 생성(generation) 전용.
+
+    정책 검색은 employment_search_node가 담당하고 state에 기록한다.
+    이 에이전트는 검색된 정책 텍스트(knowledge)를 받아 답변만 생성한다.
+    (검색/생성 분리 구조 — 교수님 sec09 멀티에이전트 패턴)
+    """
+
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
         self.logger = logging.getLogger(f"{__name__}.EmploymentAgent")
-        self.category = AGENT_CATEGORY["employment"]  # "일자리"
-        
         self.agent = create_agent(
             model=model,
-            tools=[answer_with_priority],
-            system_prompt=f"""
-당신은 청년 일자리 정책 전문 에이전트입니다.
+            tools=[],  # 검색 도구 없음 — 생성 전용
+            system_prompt="""당신은 청년 일자리 정책 전문가입니다.
+                제공된 [정책 정보]에만 근거하여 답변하세요. 정보에 없는 정책이나 수치를 임의로 만들어내지 마세요.
+                [정책 정보]가 비어 있으면, 관련 정책을 찾지 못했다고 솔직하게 안내하세요.
 
-[핵심 역할]
-answer_with_priority 도구를 호출하여 정책을 검색하고 답변합니다.
-이 도구는 내부적으로:
-1. PGVector RAG에서 정책 검색 (1순위)
-2. RAG 결과가 부족하면 웹 검색으로 보완
-3. RAG와 WEB 결과를 정책 정보 형식으로 통합
+                답변 형식은 다음과 같습니다.
 
-[도구 호출 방법]
-answer_with_priority(query, category, k)
-- query: 사용자의 질문
-- category: "{self.category}" (반드시 이 값 사용)
-- k: 최대 정책 개수 (기본 5)
+                💼 일자리정책팀 답변:
+                안녕하세요, 청년 일자리정책팀입니다.
 
-[답변 가이드]
-- 정책명, 설명, 지원내용, 신청방법을 명확하게 제시
-- 웹 검색 결과는 출처(URL)를 명시
-- 정책 출처(RAG/WEB)를 구분하여 사용자에게 전달
-- 불확실한 정보는 "확인이 필요합니다"라고 명시
-            """
+                [정책명 및 개요]
+                - 정책 설명
+                - 지원 규모 및 대상
+
+                [지원 내용]
+                - 지원 유형별 세부 내용
+                - 지원 금액/범위
+
+                [참여 대상 자격]
+                - 기본 자격 요건
+                - 연령/고용 상태 조건
+                - 업종/직종 제한 여부
+
+                [신청 방법 및 절차]
+                1. 신청 기간 및 경로 확인
+                2. 필수 서류 준비
+                3. 기관(고용센터 등)을 통한 신청
+                4. 자격 심사 및 최종 선정
+
+                [필수 확인사항]
+                ✓ 신청 마감일 반드시 확인
+                ✓ 지원 대상 연령/고용 상태 확인
+                ✓ 필요 서류 사전 준비
+
+                친절하게 안내해드리겠습니다.
+                감사합니다."""
         )
-    
-    def _parse_policies_from_messages(self, messages: list) -> tuple[list[dict], str]:
-        """
-        agent의 메시지 히스토리에서 도구 호출 결과를 파싱하여 정책 메타 추출.
 
-        새로운 포맷:
-        - "[RAG]\n..." : RAG 결과 (source="rag")
-        - "[LLM]\n..." : WEB 결과를 LLM 형식으로 포장 (source="web")
+    async def run(
+        self, inquiry: str, knowledge: str, user_profile: dict | None = None
+    ) -> str:
+        """검색된 정책(knowledge)으로 답변을 생성한다. (검색은 하지 않음)
 
+        Args:
+            inquiry: 사용자 질문
+            knowledge: employment_search_node가 검색한 정책 텍스트
+            user_profile: 로그인 유저 프로필 (guest면 None/빈 dict)
         Returns:
-            (policies, source): 정책 메타 리스트와 출처 ("rag" / "web" / "none")
+            str: 생성된 사용자용 답변 텍스트
         """
-        policies: list[dict] = []
-        source = "none"
+        prompt = (
+            "다음 정보를 바탕으로 일자리 정책 답변을 작성하세요.\n\n"
+            f"[질문]\n{inquiry}\n\n"
+            f"[정책 정보]\n{knowledge or '(검색된 정책 없음)'}\n"
+        )
+        if user_profile:
+            prompt += f"\n[사용자 정보]\n{user_profile}\n"
 
-        for msg in messages:
-            if isinstance(msg, ToolMessage):
-                tool_result = msg.content
+        result = await self.agent.ainvoke(
+            {"messages": [{"role": "user", "content": prompt}]}
+        )
+        return result["messages"][-1].content
 
-                # "[RAG]" 또는 "[LLM]" 신호로 섹션 분리
-                rag_section = ""
-                llm_section = ""
-
-                # "[RAG]\n..." 추출
-                if "[RAG]\n" in tool_result:
-                    rag_match = re.search(r"\[RAG\]\n(.+?)(?:\n\n\[LLM\]|\Z)", tool_result, re.DOTALL)
-                    if rag_match:
-                        rag_section = rag_match.group(1)
-
-                # "[LLM]\n..." 추출
-                if "[LLM]\n" in tool_result:
-                    llm_match = re.search(r"\[LLM\]\n(.+)", tool_result, re.DOTALL)
-                    if llm_match:
-                        llm_section = llm_match.group(1)
-
-                # RAG 섹션 파싱
-                if rag_section:
-                    policy_blocks = [block.strip() for block in rag_section.split("\n\n") if block.strip() and "총" not in block]
-
-                    for block in policy_blocks:
-                        lines = block.split("\n")
-                        if not lines:
-                            continue
-
-                        first_line = lines[0]
-                        match = re.match(r"\[\d+\]\s+(.+)", first_line)
-                        if match:
-                            policy_name = match.group(1)
-                            policy_meta = {"plcyNm": policy_name}
-
-                            for line in lines[1:]:
-                                if line.startswith("설명:"):
-                                    policy_meta["plcyExplnCn"] = line.replace("설명:", "").strip()
-                                elif line.startswith("지원내용:"):
-                                    policy_meta["plcySprtCn"] = line.replace("지원내용:", "").strip()
-                                elif line.startswith("신청방법:"):
-                                    policy_meta["plcyAplyMthdCn"] = line.replace("신청방법:", "").strip()
-
-                            policies.append(policy_meta)
-                            if source == "none":
-                                source = "rag"
-
-                # LLM 섹션 파싱 (WEB 결과)
-                if llm_section:
-                    policy_blocks = [block.strip() for block in llm_section.split("\n\n") if block.strip()]
-
-                    for block in policy_blocks:
-                        lines = block.split("\n")
-                        if not lines:
-                            continue
-
-                        first_line = lines[0]
-                        match = re.match(r"\[\d+\]\s+(.+)", first_line)
-                        if match:
-                            policy_meta = {}
-
-                            for line in lines:
-                                if line.startswith("["):
-                                    match = re.match(r"\[\d+\]\s+(.+)", line)
-                                    if match:
-                                        policy_meta["title"] = match.group(1)
-                                elif line.startswith("출처:"):
-                                    policy_meta["url"] = line.replace("출처:", "").strip()
-                                elif line.startswith("요약:"):
-                                    policy_meta["content"] = line.replace("요약:", "").strip()
-
-                            if policy_meta:
-                                policies.append(policy_meta)
-                                source = "web"  # WEB이 있으면 source="web"으로 우선
-
-        return policies, source
-    
-    async def run(self, query: str) -> DomainResult:
-        """사용자 질문을 처리하고 정책 검색 결과를 DomainResult로 반환합니다."""
-        try:
-            result = await self.agent.ainvoke(
-                {"messages": [{"role": "user", "content": query}]}
-            )
-            
-            # agent.ainvoke 반환값에서 정보 추출
-            messages = result["messages"]
-            text = messages[-1].content if messages else ""
-            
-            # 메시지 히스토리에서 정책 메타 파싱
-            policies, source = self._parse_policies_from_messages(messages)
-            
-            self.logger.info(
-                f"일자리 에이전트 완료 - source={source}, policies={len(policies)}건"
-            )
-            
-            return DomainResult(
-                text=text,
-                policies=policies,
-                category=self.category,
-                source=source
-            )
-        
-        except Exception as e:
-            self.logger.error(f"일자리 에이전트 실행 실패: {e}")
-            return DomainResult(
-                text=f"죄송합니다. 일자리 정책 검색 중 오류가 발생했습니다: {str(e)}",
-                policies=[],
-                category=self.category,
-                source="none"
-            )
 
 EmploymentAgentDep = Annotated[EmploymentAgent, Depends(EmploymentAgent)]
