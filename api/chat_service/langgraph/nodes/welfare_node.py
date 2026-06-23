@@ -1,6 +1,6 @@
 import logging
-from ..state import ShareState
-from ..agents.welfare_agent import WelfareAgent
+from ..state import ShareState, DomainResult
+from ..agents.welfare_agent import WelfareAgent, _CATEGORY
 
 logger = logging.getLogger(__name__)
 agent = WelfareAgent()
@@ -14,7 +14,7 @@ async def welfare_node(state: ShareState) -> dict:
     """
     logger.info("복지문화 정책 생성 노드 실행")
 
-    result = await agent.run(
+    text, policies, source, merged_profile = await agent.run(
         inquiry=state["user_inquiry"],
         knowledge=state.get("welfare_knowledge_base", ""),
         policies=state.get("welfare_policies", []),
@@ -22,4 +22,5 @@ async def welfare_node(state: ShareState) -> dict:
         user_profile=state.get("user_profile"),
         messages=state.get("messages", []),
     )
-    return {"welfare_result": result}
+    result = DomainResult(text=text, policies=policies, category=_CATEGORY, source=source)
+    return {"welfare_result": result, "user_profile": merged_profile}
