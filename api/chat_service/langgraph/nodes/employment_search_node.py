@@ -1,4 +1,6 @@
 import logging
+import re
+from datetime import date
 from langchain_postgres import PGVector
 from langchain.embeddings import init_embeddings
 from api.common.sqlalchemy_conf import engine
@@ -30,6 +32,41 @@ def _pick_policy_fields(metadata: dict) -> dict:
     return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
 
 
+def _dday_label(aply_prd_se_cd: str, aply_ymd: str) -> str | None:
+    """신청기간 구분 + 날짜 문자열로 D-day 라벨을 반환한다.
+    반환값이 None이면 마감/만료 → 호출부에서 정책을 제외한다.
+    """
+    se = (aply_prd_se_cd or "").strip()
+    if se == "마감":
+        return None
+    if se == "상시":
+        return "상시접수"
+
+    # 특정기간: aplyYmd에서 YYYY.MM.DD 또는 YYYYMMDD 형식 날짜를 파싱
+    ymd = (aply_ymd or "").strip()
+    if not ymd:
+        return ""  # 날짜 없음 → 라벨 없이 통과 (safe default)
+
+    all_dates = []
+    for m in re.finditer(r"(\d{4})[.\-]?(\d{2})[.\-]?(\d{2})", ymd):
+        try:
+            all_dates.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
+        except ValueError:
+            pass
+
+    if not all_dates:
+        return ""  # 파싱 실패 → 라벨 없이 통과
+
+    end_date = max(all_dates)  # 기간 범위이면 마감일(끝 날짜) 사용
+    delta = (end_date - date.today()).days
+
+    if delta < 0:
+        return f"⚠️ 현재 신청 불가 (신청기간 {end_date.strftime('%Y.%m.%d')} 종료)"
+    if delta == 0:
+        return f"D-day (오늘 마감 {end_date.strftime('%Y.%m.%d')})"
+    return f"D-{delta} ({end_date.strftime('%Y.%m.%d')} 마감)"
+
+
 async def employment_search_node(state: ShareState) -> dict:
     """취업 정책 검색 노드.
 
@@ -43,22 +80,33 @@ async def employment_search_node(state: ShareState) -> dict:
     logger.info("취업 정책 검색 노드 실행 — query=%s", query[:30])
 
     results = await _vectorstore.asimilarity_search_with_score(
-        query, k=5, filter={"category": _CATEGORY}
+        query, k=10, filter={"category": _CATEGORY}
     )
-    documents = [
-        (doc, dist) for doc, dist in results if dist <= _SIMILARITY_THRESHOLD
-    ]
 
-    if not documents:
+    documents_with_dday: list[tuple] = []
+    for doc, dist in results:
+        if dist > _SIMILARITY_THRESHOLD:
+            continue
+        label = _dday_label(
+            doc.metadata.get("aplyPrdSeCd", ""),
+            doc.metadata.get("aplyYmd", ""),
+        )
+        if label is None:  # 마감 / 기간 만료
+            continue
+        documents_with_dday.append((doc, dist, label))
+
+    if not documents_with_dday:
         logger.info("취업 정책 검색 결과 없음")
         return {"knowledge_base": "", "policies": []}
 
-    policies = [_pick_policy_fields(doc.metadata) for doc, _ in documents]
+    policies = [_pick_policy_fields(doc.metadata) for doc, _, _ in documents_with_dday]
 
     lines = []
-    for idx, (doc, _dist) in enumerate(documents, 1):
+    for idx, (doc, _dist, dday) in enumerate(documents_with_dday, 1):
         lines.append(f"[정책 {idx}] {doc.metadata.get('plcyNm', '')}")
         lines.append(f"내용: {doc.page_content}")
+        if dday:
+            lines.append(f"신청기간: {dday}")
         lines.append(f"신청 URL: {doc.metadata.get('aplyUrlAddr', '정보 없음')}\n")
     knowledge = "\n".join(lines)
 
