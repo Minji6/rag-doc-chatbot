@@ -149,7 +149,7 @@ async def extract_user_profile(
         HumanMessage(content=conversation_text),
     ])
 
-    raw = str(result.content).strip().strip("```json").strip("```").strip()
+    raw = _strip_code_fence(str(result.content))
     try:
         parsed = json.loads(raw)
         new_fields: dict = {k: v for k, v in parsed.get("new_fields", {}).items() if v and k in _PROFILE_FIELDS}
@@ -175,9 +175,7 @@ def _check_age(user_profile: dict, policy_metadata: dict) -> Check:
         return False, f"나이 미달 (최소 {min_age}세, 현재 {age}세)"
     if max_age and age > max_age:
         return False, f"나이 초과 (최대 {max_age}세, 현재 {age}세)"
-    if age:
-        return True, f"나이 조건 충족 ({age}세)"
-    return True, "나이 조건 제한없음"
+    return True, f"나이 조건 충족 ({age}세)"
 
 
 def _check_job(user_profile: dict, policy_metadata: dict) -> Check:
@@ -215,7 +213,7 @@ def _check_region(user_profile: dict, policy_metadata: dict) -> Check:
         return True, "지역 제한 없음"
     if not user_region:
         return None, "거주 지역 정보 없음 — 확인 필요"
-    if user_region in policy_region or policy_region in user_region:
+    if user_region.startswith(policy_region) or policy_region.startswith(user_region):
         return True, f"지역 조건 충족 ({user_region})"
     return False, f"지역 불일치 (필요: {policy_region}, 현재: {user_region})"
 
