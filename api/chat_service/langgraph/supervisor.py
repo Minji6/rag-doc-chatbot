@@ -4,6 +4,8 @@ from typing import Annotated
 from fastapi import Depends
 from langgraph.graph import END, START, StateGraph
 
+from api.chat_service.langgraph.nodes.housing_search_node import housing_search_node
+
 from .state import ShareState, empty_domain_result
 from .constants import AGENT_CATEGORY, CATEGORY_ROUTING
 from .nodes.analysis_node import analysis_node
@@ -29,14 +31,14 @@ class ChatbotSupervisor:
 
         # 노드 등록
         graph.add_node("analysis", analysis_node)
-        graph.add_node("housing", housing_node)
         graph.add_node("employment_search", employment_search_node)
         graph.add_node("employment", employment_node)
         graph.add_node("education_search", education_search_node)  # 교육: 검색 노드
         graph.add_node("education", education_node)                # 교육: 생성 노드
         graph.add_node("welfare", welfare_node)
         graph.add_node("gather", gather_node)
-
+        graph.add_node("housing_search", housing_search_node)  # 주거: 검색 노드
+        graph.add_node("housing", housing_node)                # 주거: 생성 노드
         # 시작 → 의도 분석
         graph.add_edge(START, "analysis")
 
@@ -48,15 +50,17 @@ class ChatbotSupervisor:
         route_map = {name: name for name in node_names}
         route_map["education"] = "education_search"
         route_map["employment"] = "employment_search"
+        route_map["housing"] = "housing_search" 
         graph.add_conditional_edges(
             "analysis",
             route_node_fun,
-            route_map,
+            route_map, # type:ignore
         )
 
         # 검색 노드 → 생성 노드
         graph.add_edge("education_search", "education")
         graph.add_edge("employment_search", "employment")
+        graph.add_edge("housing_search", "housing")  # 
 
         # 도메인 노드 → 전부 gather로 모임 (명세서 개요 구조)
         for node_name in node_names:
