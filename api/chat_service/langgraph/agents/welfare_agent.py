@@ -13,7 +13,7 @@ from ..constants import AGENT_CATEGORY
 logger = logging.getLogger(__name__)
 
 _CATEGORY = AGENT_CATEGORY["welfare"]
-_MIN_RAG_COUNT = 3  # RAG 결과가 이 수 미만이면 웹 검색으로 보완
+_MIN_RAG_COUNT = 5  # RAG 결과가 이 수 미만이면 웹 검색으로 보완
 
 ##############################################################
 # 유틸
@@ -27,14 +27,6 @@ def _calc_age(birth_date_str: str) -> int | None:
     except (ValueError, TypeError):
         return None
 
-
-def _last_ai_message(messages: list) -> str:
-    for m in reversed(messages):
-        role = m.get("role", "") if isinstance(m, dict) else getattr(m, "type", "")
-        content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
-        if role in ("ai", "assistant") and content:
-            return content
-    return ""
 
 
 async def _normalize_web_policies(web_text: str) -> list[dict]:
@@ -97,7 +89,10 @@ _PROFILE_FIELDS = {
 }
 
 
-async def extract_user_profile(conversation_text: str, existing_profile_json: str = "{}") -> str:
+async def extract_user_profile(
+    conversation_text: str,
+    existing_profile_json: str = "{}",
+) -> tuple[str, dict]:
     """
     대화 내용에서 사용자 정보를 추출하고, 비어있는 항목에 대해서만 유도 질문을 생성합니다.
     role='user'일 때 run()에서 직접 호출합니다 (LLM 도구 아님).
@@ -106,7 +101,7 @@ async def extract_user_profile(conversation_text: str, existing_profile_json: st
         conversation_text: 사용자와의 대화 내용
         existing_profile_json: 기존에 수집된 사용자 프로필 JSON 문자열
     Returns:
-        str: 이번 대화에서 새로 확인된 정보 요약 + 비어있는 항목에 대한 질문 (1~2가지)
+        tuple[str, dict]: (유도 질문 텍스트, 새로 파악된 프로필 필드 dict)
     """
     logger.info("extract_user_profile 실행")
     try:
@@ -122,24 +117,110 @@ async def extract_user_profile(conversation_text: str, existing_profile_json: st
         or "없음"
     )
     empty_summary = (
-        "\n".join(f"  - {label}" for label in empty_fields.values())
+        "\n".join(f"  - {k} ({label})" for k, label in empty_fields.items())
         or "없음 (모든 항목 수집 완료)"
     )
 
     llm = init_chat_model("gpt-4o-mini", model_provider="openai", temperature=0)
     result = await llm.ainvoke([
         SystemMessage(content=(
-            "사용자와의 대화에서 새로 파악된 정보를 추출하세요.\n"
-            "그리고 아직 모르는 항목 중에서 가장 중요한 1~2가지만 자연스럽게 질문하세요.\n\n"
-            f"이미 알고 있는 정보 (질문하지 마세요):\n{filled_summary}\n\n"
-            f"아직 모르는 항목 (이 중에서만 질문하세요):\n{empty_summary}\n\n"
-            "응답 형식:\n"
-            "확인된 정보: (이번 대화에서 새로 알게 된 내용, 없으면 '없음')\n"
-            "추가 질문: (비어있는 항목 중 1~2가지만, 모두 채워졌으면 생략)"
+            "사용자와의 대화에서 새로 파악된 정보를 추출하고, 아래 JSON 형식으로만 응답하세요.\n\n"
+            f"이미 알고 있는 정보 (new_fields에 포함하지 마세요):\n{filled_summary}\n\n"
+            f"아직 모르는 항목 (이 중에서만 추출하고 질문하세요):\n{empty_summary}\n\n"
+            "응답 형식 (JSON만, 다른 텍스트 금지):\n"
+            "{{\n"
+            '  "new_fields": {{"필드명": "값", ...}},\n'
+            '  "questions": "비어있는 항목 중 1~2가지 유도 질문 (없으면 빈 문자열)"\n'
+            "}}\n\n"
+            "new_fields 규칙:\n"
+            "- 대화에서 명확히 언급된 값만 포함\n"
+            "- 언급되지 않은 항목은 포함하지 마세요\n"
+            "- 필드명은 반드시 아직 모르는 항목의 키(예: jobcd, earncndsecd)를 사용하세요"
         )),
         HumanMessage(content=conversation_text),
     ])
-    return str(result.content)
+
+    raw = str(result.content).strip().strip("```json").strip("```").strip()
+    try:
+        parsed = json.loads(raw)
+        new_fields: dict = {k: v for k, v in parsed.get("new_fields", {}).items() if v and k in _PROFILE_FIELDS}
+        questions: str = parsed.get("questions", "")
+    except (json.JSONDecodeError, AttributeError):
+        logger.warning("extract_user_profile JSON 파싱 실패, 원문 반환")
+        new_fields = {}
+        questions = raw
+
+    return questions, new_fields
+
+
+Check = tuple[bool | None, str]  # (충족여부, 사유)
+
+
+def _check_age(user_profile: dict, policy_metadata: dict) -> Check:
+    age = user_profile.get("age") or _calc_age(str(user_profile.get("birth_date", "")))
+    min_age = int(policy_metadata.get("sprtTrgtMinAge") or 0)
+    max_age = int(policy_metadata.get("sprtTrgtMaxAge") or 0)
+    if age is None:
+        return None, "나이 정보 없음 — 확인 필요"
+    if min_age and age < min_age:
+        return False, f"나이 미달 (최소 {min_age}세, 현재 {age}세)"
+    if max_age and age > max_age:
+        return False, f"나이 초과 (최대 {max_age}세, 현재 {age}세)"
+    if age:
+        return True, f"나이 조건 충족 ({age}세)"
+    return True, "나이 조건 제한없음"
+
+
+def _check_job(user_profile: dict, policy_metadata: dict) -> Check:
+    policy_job = (policy_metadata.get("jobCd") or "제한없음").strip()
+    user_job = user_profile.get("jobcd")
+    if not policy_job or policy_job == "제한없음":
+        return True, "취업 조건 제한없음"
+    if not user_job:
+        return None, "취업 상태 정보 없음 — 확인 필요"
+    if user_job == policy_job:
+        return True, f"취업 조건 충족 ({user_job})"
+    return False, f"취업 조건 불일치 (필요: {policy_job}, 현재: {user_job})"
+
+
+def _check_income(user_profile: dict, policy_metadata: dict) -> Check:
+    max_income_str = policy_metadata.get("srhmhldIncmCd") or ""
+    if not max_income_str:
+        return True, "소득 조건 제한없음"
+    user_income = user_profile.get("earncndsecd")
+    try:
+        max_income = int(max_income_str)
+        if user_income is None:
+            return None, "소득 정보 없음 — 확인 필요"
+        if int(user_income) <= max_income:
+            return True, f"소득 조건 충족 ({user_income}분위 ≤ {max_income}분위)"
+        return False, f"소득 초과 ({user_income}분위 > {max_income}분위)"
+    except ValueError:
+        return None, "소득 조건 확인 불가"
+
+
+def _check_region(user_profile: dict, policy_metadata: dict) -> Check:
+    policy_region = (policy_metadata.get("plcyAplyRgnCd") or "전국").strip()
+    user_region = user_profile.get("zipcd")
+    if policy_region in ("전국", "제한없음", ""):
+        return True, "지역 제한 없음"
+    if not user_region:
+        return None, "거주 지역 정보 없음 — 확인 필요"
+    if user_region in policy_region or policy_region in user_region:
+        return True, f"지역 조건 충족 ({user_region})"
+    return False, f"지역 불일치 (필요: {policy_region}, 현재: {user_region})"
+
+
+def _check_school(user_profile: dict, policy_metadata: dict) -> Check:
+    policy_school = (policy_metadata.get("schoolcd") or "제한없음").strip()
+    user_school = user_profile.get("schoolcd")
+    if not policy_school or policy_school == "제한없음":
+        return True, "학력 조건 제한없음"
+    if not user_school:
+        return None, "학력 정보 없음 — 확인 필요"
+    if user_school == policy_school:
+        return True, f"학력 조건 충족 ({user_school})"
+    return False, f"학력 조건 불일치 (필요: {policy_school}, 현재: {user_school})"
 
 
 @tool
@@ -158,73 +239,13 @@ def check_eligibility(user_profile: dict, policy_metadata: dict) -> str:
     policy_name = policy_metadata.get("plcyNm", "해당 정책")
     logger.info("check_eligibility 실행: policy=%s", policy_name)
 
-    age = user_profile.get("age") or _calc_age(str(user_profile.get("birth_date", "")))
-    checks = []
-
-    # 나이
-    min_age = int(policy_metadata.get("sprtTrgtMinAge") or 0)
-    max_age = int(policy_metadata.get("sprtTrgtMaxAge") or 0)
-    if age is None:
-        checks.append((None, "나이 정보 없음 — 확인 필요"))
-    elif min_age and age < min_age:
-        checks.append((False, f"나이 미달 (최소 {min_age}세, 현재 {age}세)"))
-    elif max_age and age > max_age:
-        checks.append((False, f"나이 초과 (최대 {max_age}세, 현재 {age}세)"))
-    else:
-        checks.append((True, f"나이 조건 충족 ({age}세)" if age else "나이 조건 제한없음"))
-
-    # 취업 상태
-    policy_job = (policy_metadata.get("jobCd") or "제한없음").strip()
-    user_job = user_profile.get("jobcd")
-    if not policy_job or policy_job == "제한없음":
-        checks.append((True, "취업 조건 제한없음"))
-    elif not user_job:
-        checks.append((None, "취업 상태 정보 없음 — 확인 필요"))
-    elif user_job == policy_job:
-        checks.append((True, f"취업 조건 충족 ({user_job})"))
-    else:
-        checks.append((False, f"취업 조건 불일치 (필요: {policy_job}, 현재: {user_job})"))
-
-    # 소득
-    max_income_str = policy_metadata.get("srhmhldIncmCd") or ""
-    if not max_income_str:
-        checks.append((True, "소득 조건 제한없음"))
-    else:
-        user_income = user_profile.get("earncndsecd")
-        try:
-            max_income = int(max_income_str)
-            if user_income is None:
-                checks.append((None, "소득 정보 없음 — 확인 필요"))
-            elif int(user_income) <= max_income:
-                checks.append((True, f"소득 조건 충족 ({user_income}분위 ≤ {max_income}분위)"))
-            else:
-                checks.append((False, f"소득 초과 ({user_income}분위 > {max_income}분위)"))
-        except ValueError:
-            checks.append((None, "소득 조건 확인 불가"))
-
-    # 지역
-    policy_region = (policy_metadata.get("plcyAplyRgnCd") or "전국").strip()
-    user_region = user_profile.get("zipcd")
-    if policy_region in ("전국", "제한없음", ""):
-        checks.append((True, "지역 제한 없음"))
-    elif not user_region:
-        checks.append((None, "거주 지역 정보 없음 — 확인 필요"))
-    elif user_region in policy_region or policy_region in user_region:
-        checks.append((True, f"지역 조건 충족 ({user_region})"))
-    else:
-        checks.append((False, f"지역 불일치 (필요: {policy_region}, 현재: {user_region})"))
-
-    # 학력
-    policy_school = (policy_metadata.get("schoolcd") or "제한없음").strip()
-    user_school = user_profile.get("schoolcd")
-    if not policy_school or policy_school == "제한없음":
-        checks.append((True, "학력 조건 제한없음"))
-    elif not user_school:
-        checks.append((None, "학력 정보 없음 — 확인 필요"))
-    elif user_school == policy_school:
-        checks.append((True, f"학력 조건 충족 ({user_school})"))
-    else:
-        checks.append((False, f"학력 조건 불일치 (필요: {policy_school}, 현재: {user_school})"))
+    checks = [
+        _check_age(user_profile, policy_metadata),
+        _check_job(user_profile, policy_metadata),
+        _check_income(user_profile, policy_metadata),
+        _check_region(user_profile, policy_metadata),
+        _check_school(user_profile, policy_metadata),
+    ]
 
     lines = [f"[ {policy_name} ] 자격 판정 결과", "-" * 50]
     for ok, reason in checks:
@@ -379,26 +400,19 @@ class WelfareAgent:
         policies: list[dict] | None = None,
         user_role: str = "guest",
         user_profile: dict | None = None,
-        messages: list | None = None,
     ) -> tuple[str, list[dict], Literal["rag", "web", "none"], dict]:
         user_profile = user_profile or {}
         policies = policies or []
-        messages = messages or []
         web_searched = False
 
         if not knowledge and not policies:
-            # RAG 완전 실패 — 이전 AI 응답 재활용 후, 없으면 웹으로 대체
-            prev_ai = _last_ai_message(messages)
-            if prev_ai:
-                knowledge = f"[이전 답변 참고]\n{prev_ai}"
-                logger.info("RAG 결과 없음 — 이전 AI 응답 fallback 사용")
-            else:
-                logger.info("RAG 결과 없음 — 웹 검색으로 대체")
-                web_result = await _search_web(inquiry, [], 5)
-                if web_result:
-                    knowledge = f"[웹 검색 결과]\n{web_result}"
-                    policies = await _normalize_web_policies(web_result)
-                    web_searched = True
+            # RAG 완전 실패 — 웹 검색으로 대체
+            logger.info("RAG 결과 없음 — 웹 검색으로 대체")
+            web_result = await _search_web(inquiry, [], 5)
+            if web_result:
+                knowledge = f"[웹 검색 결과]\n{web_result}"
+                policies = await _normalize_web_policies(web_result)
+                web_searched = True
 
         elif len(policies) < _MIN_RAG_COUNT:
             # RAG 부족 — 웹으로 보완 (RAG 결과는 앞에 유지)
@@ -416,14 +430,16 @@ class WelfareAgent:
                 "apply_period_type": policy.get("aplyPrdSeCd") or "",
             })
 
-        # role='user'일 때 빈 프로필 필드에 대한 유도 질문 생성
+        # role='user'일 때 빈 프로필 필드에 대한 유도 질문 생성 + 새 정보 merge
         profile_questions = ""
         if user_role == "user":
-            profile_questions = await extract_user_profile(
+            profile_questions, new_fields = await extract_user_profile(
                 conversation_text=inquiry,
                 existing_profile_json=json.dumps(user_profile, ensure_ascii=False),
             )
-            logger.info("extract_user_profile 실행 완료")
+            if new_fields:
+                user_profile = {**user_profile, **new_fields}
+                logger.info("user_profile 업데이트: %s", list(new_fields.keys()))
 
         agent = self._make_agent(user_profile, user_role)
         prompt = (
