@@ -166,7 +166,7 @@ Check = tuple[bool | None, str]  # (충족여부, 사유)
 
 
 def _check_age(user_profile: dict, policy_metadata: dict) -> Check:
-    age = user_profile.get("age") or _calc_age(str(user_profile.get("birth_date", "")))
+    age = _calc_age(str(user_profile.get("birth_date", "")))
     min_age = int(policy_metadata.get("sprtTrgtMinAge") or 0)
     max_age = int(policy_metadata.get("sprtTrgtMaxAge") or 0)
     if age is None:
