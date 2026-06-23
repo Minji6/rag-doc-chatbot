@@ -25,6 +25,10 @@ PGVECTOR_COLLECTION_NAME = "youth_policy_all"
 # 유사도 거리 임계값 (text-embedding-3-large 기준, 지침서 §22-6)
 SIMILARITY_DISTANCE_THRESHOLD = 0.4
 
+# 교육 도메인 전용 임계값 — 실측 거리값 기반 (공통 0.4보다 완화)
+EDUCATION_SIMILARITY_THRESHOLD_USER = 0.7   # 로그인 유저: 관련성 있는 정책 위주
+EDUCATION_SIMILARITY_THRESHOLD_GUEST = 0.9  # 게스트: 정확도보다 결과 제공 우선
+
 # analysis_node 분류 실패/예외 시 기본 분야 — 라우팅 함수 fallback에 사용
 DEFAULT_CATEGORY = "주거"
 
