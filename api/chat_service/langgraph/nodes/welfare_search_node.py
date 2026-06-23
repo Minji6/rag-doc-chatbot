@@ -16,7 +16,13 @@ logger = logging.getLogger(__name__)
 
 _CATEGORY = AGENT_CATEGORY["welfare"]
 
-_embeddings = init_embeddings("openai:text-embedding-3-large")
+# 모듈 싱글톤 — 매 검색마다 재생성하지 않도록 import 시점에 1회만 생성.
+_vectorstore = PGVector(
+    embeddings=init_embeddings("openai:text-embedding-3-large"),
+    collection_name=PGVECTOR_COLLECTION_NAME,
+    connection=engine,
+    async_mode=True,
+)
 
 
 def _pick_policy_fields(metadata: dict) -> dict:
@@ -36,13 +42,7 @@ async def welfare_search_node(state: ShareState) -> dict:
     query = state["user_inquiry"]
     logger.info("복지문화 정책 검색 노드 실행 — query=%s", query[:30])
 
-    vectorstore = PGVector(
-        embeddings=_embeddings,
-        collection_name=PGVECTOR_COLLECTION_NAME,
-        connection=engine,
-        async_mode=True,
-    )
-    results = await vectorstore.asimilarity_search_with_score(
+    results = await _vectorstore.asimilarity_search_with_score(
         query, k=5, filter={"category": _CATEGORY}
     )
     documents = [
