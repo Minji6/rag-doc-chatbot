@@ -7,8 +7,10 @@ from ..constants import (
     AGENT_CATEGORY,
     PGVECTOR_COLLECTION_NAME,
     POLICY_METADATA_FIELDS,
-    SIMILARITY_DISTANCE_THRESHOLD,
 )
+
+# 취업 도메인 전용 임계값 — 실측 거리값 기반 (공통 0.4보다 완화)
+_SIMILARITY_THRESHOLD = 0.85
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ async def employment_search_node(state: ShareState) -> dict:
         query, k=5, filter={"category": _CATEGORY}
     )
     documents = [
-        (doc, dist) for doc, dist in results if dist <= SIMILARITY_DISTANCE_THRESHOLD
+        (doc, dist) for doc, dist in results if dist <= _SIMILARITY_THRESHOLD
     ]
 
     if not documents:
