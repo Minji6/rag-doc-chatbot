@@ -67,8 +67,8 @@ async def education_search_node(state: ShareState) -> dict:
     - guest: _SIMILARITY_THRESHOLD_GUEST (완화) — 정확도보다 결과 제공 우선
     - user: _SIMILARITY_THRESHOLD_USER — 관련성 있는 정책 위주
 
-    - knowledge_base: 생성 노드가 답변 근거로 읽을 정책 텍스트
-    - policies: gather 후처리(비교/점수)용 raw 정책 메타
+    - domain_knowledge["education"]: 생성 노드가 답변 근거로 읽을 정책 텍스트
+    - domain_policies["education"]: gather 후처리(비교/점수)용 raw 정책 메타
     """
     inquiry = state["user_inquiry"]
     inquiry_type = state.get("inquiry_type", "검색")
@@ -99,7 +99,10 @@ async def education_search_node(state: ShareState) -> dict:
 
     if not documents:
         logger.info("교육 정책 검색 결과 없음")
-        return {"education_knowledge_base": "", "education_policies": []}
+        return {
+            "domain_knowledge": {"education": ""},
+            "domain_policies": {"education": []},
+        }
 
     policies = [_pick_policy_fields(doc.metadata) for doc, _ in documents]
 
@@ -111,4 +114,7 @@ async def education_search_node(state: ShareState) -> dict:
     knowledge = "\n".join(lines)
 
     logger.info("교육 정책 검색 완료 — %d건 (threshold=%.1f)", len(policies), threshold)
-    return {"education_knowledge_base": knowledge, "education_policies": policies}
+    return {
+        "domain_knowledge": {"education": knowledge},
+        "domain_policies": {"education": policies},
+    }

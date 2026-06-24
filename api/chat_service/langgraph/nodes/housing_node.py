@@ -10,11 +10,11 @@ agent = HousingAgent()   # 모듈 싱글톤
 _CATEGORY = AGENT_CATEGORY["housing"]
 
 async def housing_node(state: ShareState) -> dict:
-    """주거 정책 생성 노드, 검색 노드가 state에 넣어둔 knowledge_base/policies를 읽어 답변 생성."""
+    """주거 정책 생성 노드. domain_knowledge["housing"] / domain_policies["housing"]을 읽어 답변 생성."""
     logger.info("주거 정책 생성 노드 실행")
     
-    knowledge = state.get("housing_knowledge_base", "")
-    policies = state.get("housing_policies", [])
+    knowledge = state.get("domain_knowledge", {}).get("housing", "")
+    policies = state.get("domain_policies", {}).get("housing", [])
     
     text = await agent.run(
         inquiry=state["user_inquiry"],
@@ -27,4 +27,4 @@ async def housing_node(state: ShareState) -> dict:
         text = text, policies=policies, category=_CATEGORY, source=source
     )
     
-    return {"housing_result": result}
+    return {"domain_results": {"housing": result}}
