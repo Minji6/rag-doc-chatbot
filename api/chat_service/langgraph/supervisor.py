@@ -78,12 +78,12 @@ class ChatbotSupervisor:
         user_inquiry: str,
         user_role: str = "guest",
         user_profile: dict | None = None,
-        messages: list | None = None, # 이전 대화 맥락 (없으면 첫 대화)
-    ) -> str:
-
+        messages: list | None = None,
+    ) -> dict:
+        """그래프를 실행하고 최종 응답과 follow-up suggestions를 반환한다."""
         user_profile = user_profile or {}
         initial_state = ShareState(
-            messages= messages or [],
+            messages=messages or [],
             user_inquiry=user_inquiry,
             user_role=user_role,
             user_profile=user_profile,
@@ -101,10 +101,14 @@ class ChatbotSupervisor:
             employment_result=empty_domain_result(AGENT_CATEGORY["employment"]),
             education_result=empty_domain_result(AGENT_CATEGORY["education"]),
             welfare_result=empty_domain_result(AGENT_CATEGORY["welfare"]),
+            suggestions=[],
             final_response="",
         )
         final_state = await self.workflow.ainvoke(initial_state)
-        return final_state["final_response"]
+        return {
+            "response": final_state["final_response"],
+            "suggestions": final_state.get("suggestions", []),
+        }
 
     def get_graph_image(self) -> bytes:
         return self.workflow.get_graph().draw_mermaid_png()

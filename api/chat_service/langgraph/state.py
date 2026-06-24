@@ -47,4 +47,5 @@ class ShareState(TypedDict):
     education_result: DomainResult      # 교육 에이전트 답변
     welfare_result: DomainResult        # 복지 에이전트 답변
 
+    suggestions: list[str]     # 교육 에이전트가 생성한 follow-up 질문 (PoC)
     final_response: str        # gather_node가 채우는 최종 답변
