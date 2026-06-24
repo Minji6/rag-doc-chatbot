@@ -36,25 +36,25 @@ async def chat(
         user_profile = await user_service.get_user_profile(user_id, session)
         if not user_profile:
             raise HTTPException(status_code=404, detail=f"user_id={user_id} 유저를 찾을 수 없습니다.")
-        
+
     # user → "{user_id}:{conversation_id}", guest → "{conversation_id}"
     thread_id = build_thread_id(role, conversation_id, str(user_id) if user_id else None)
-    
+
     # 이전 대화 불러오기 - 첫 대화면 빈 리스트 반환
     history = await agent.get_history(thread_id)
     logger.info(f"[{thread_id}] 이전 대화 {len(history['messages'])}개 로드")
 
     response = await supervisor.run(
-        user_inquiry=message, 
-        user_role=role, 
+        user_inquiry=message,
+        user_role=role,
         user_profile=user_profile,
         messages=history["messages"]
     )
-    
+
     # 새 대화 저장 - LLM에 재호출 없이 checkpointer에 직접 저장
     await agent.save_exchange(message, response, thread_id)
     logger.info(f"[{thread_id}] 대화 저장 완료")
-    
+
     return JSONResponse(content={
         "conversation_id": conversation_id,
         "message": response,
