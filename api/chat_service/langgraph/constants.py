@@ -25,6 +25,10 @@ PGVECTOR_COLLECTION_NAME = "youth_policy_all"
 # 유사도 거리 임계값 (text-embedding-3-large 기준, 지침서 §22-6)
 SIMILARITY_DISTANCE_THRESHOLD = 0.4
 
+# 교육 도메인 전용 임계값 — 실측 거리값 기반 (공통 0.4보다 완화)
+EDUCATION_SIMILARITY_THRESHOLD_USER = 0.7   # 로그인 유저: 관련성 있는 정책 위주
+EDUCATION_SIMILARITY_THRESHOLD_GUEST = 0.9  # 게스트: 정확도보다 결과 제공 우선
+
 # analysis_node 분류 실패/예외 시 기본 분야 — 라우팅 함수 fallback에 사용
 DEFAULT_CATEGORY = "주거"
 
@@ -54,9 +58,13 @@ POLICY_METADATA_FIELDS = (
     "aplyYmd",       # 신청 기간
     "bizPrdBgngYmd", # 사업 시작일
     "bizPrdEndYmd",  # 사업 종료일
+    # 주거 정책 자격 진단용 필드 (housing_search_node에서 사용)
+    "sprtTrgtMinAge",    # 최소 나이
+    "sprtTrgtMaxAge",    # 최대 나이
+    "sprtTrgtAgeLmtYn",  # 연령 제한 여부 (Y/N)
+    "zipCd",             # 지역 코드
+    "mrgSttsCd",         # 혼인 상태 코드
     # check_eligibility 자격 검증용
-    "sprtTrgtMinAge",   # 지원 대상 최소 나이
-    "sprtTrgtMaxAge",   # 지원 대상 최대 나이
     "jobCd",            # 취업 상태 조건
     "srhmhldIncmCd",    # 소득 분위 조건
     "plcyAplyRgnCd",    # 신청 지역 조건
