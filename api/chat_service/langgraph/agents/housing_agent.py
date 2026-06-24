@@ -1,100 +1,100 @@
 import logging
-from contextvars import ContextVar
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
-from langchain.tools import tool
-from langchain_postgres import PGVector
-from langchain.embeddings import init_embeddings
-from api.common.sqlalchemy_conf import engine
-from ..state import DomainResult
-from ..constants import (
-    AGENT_CATEGORY,
-    PGVECTOR_COLLECTION_NAME,
-    POLICY_METADATA_FIELDS,
-    SIMILARITY_DISTANCE_THRESHOLD,
-)
 
 logger = logging.getLogger(__name__)
-
-_CATEGORY = AGENT_CATEGORY["housing"]
-
-
-def _pick_policy_fields(metadata: dict) -> dict:
-    """PGVector 메타에서 화이트리스트 필드만 추려 dict 생성."""
-    return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
-
-
-##############################################################
-# 도구 정의
-##############################################################
-# search_policy의 raw 정책 결과를 노드 레벨로 회수하기 위한 채널.
-# LangChain create_agent는 tool의 raw return을 외부에 직접 노출하지 않으므로 우회 통로 필요.
-# ContextVar는 asyncio task별로 자동 격리되어 동시 호출 시에도 결과가 섞이지 않음.
-_last_search_policies: ContextVar[list[dict]] = ContextVar(
-    "housing_last_search_policies", default=[]
-)
-
-
-@tool
-async def search_policy(query: str) -> str:
-    """
-    주거 분야 청년 정책을 PGVector에서 검색합니다.
-    Args:
-        query: 검색할 질문이나 키워드
-    Returns:
-        str: 검색된 정책 내용
-    """
-    vectorstore = PGVector(
-        embeddings=init_embeddings(model="openai:text-embedding-3-large"),
-        collection_name=PGVECTOR_COLLECTION_NAME,
-        connection=engine,
-        async_mode=True,
-    )
-    results = await vectorstore.asimilarity_search_with_score(
-        query, k=5, filter={"category": _CATEGORY}
-    )
-    documents = [(doc, dist) for doc, dist in results if dist <= SIMILARITY_DISTANCE_THRESHOLD]
-
-    if not documents:
-        _last_search_policies.set([])
-        return f"'{query}' 관련 {_CATEGORY} 정책을 찾을 수 없습니다."
-
-    _last_search_policies.set([_pick_policy_fields(doc.metadata) for doc, _ in documents])
-
-    lines = []
-    for idx, (doc, _dist) in enumerate(documents, 1):
-        lines.append(f"[정책 {idx}] {doc.metadata.get('plcyNm', '')}")
-        lines.append(f"내용: {doc.page_content}")
-        lines.append(f"신청 URL: {doc.metadata.get('aplyUrlAddr', '정보 없음')}\n")
-    return "\n".join(lines)
-
 
 ##############################################################
 # Agent 클래스 정의
 ##############################################################
+
+
 class HousingAgent:
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
         self.logger = logging.getLogger(f"{__name__}.HousingAgent")
         self.agent = create_agent(
             model=model,
-            tools=[search_policy],
-            system_prompt="당신은 청년 주거 정책 전문가입니다. 주거 관련 정책만 안내하세요.",
+            tools=[],
+            system_prompt="""당신은 청년 주거 정책 전문가입니다.
+
+            제공된 [정책 정보]에만 근거하여 답변하세요. 정보에 없는 정책이나 수치를 임의로 만들어내지 마세요.
+            [정책 정보]가 비어 있으면, 관련 정책을 찾지 못했다고 솔직하게 안내하세요.
+
+            # 자격 진단 표시 처리 규칙 (이 규칙 자체는 절대 답변에 포함하지 말 것)
+
+            각 정책 옆에 ✅/❌/❓ 표시가 있다면 사용자 프로필 기반 사전 진단 결과입니다.
+            - ✅: 자격 적합 → 【추천 정책】 섹션에 모두 안내. 1개여도 여러 개여도 전부 ▶ 블록으로 나열.
+            - ❓: 추가 확인 필요 → 【추가 확인 필요】 섹션에 정책명 + 한 줄 사유만 짧게.
+            - ❌: 자격 미충족 → 【자격 미충족 안내】 섹션에 정책명만 한 줄로 나열.
+            - 진단 표시가 없으면(=게스트) 자격 언급 없이 ✅ 섹션 형식으로만 일반 안내.
+            - 해당 카테고리(✅/❓/❌)에 정책이 0개면 그 섹션 자체를 출력하지 마세요.
+
+            # 답변 형식
+
+            🏠 주거정책팀 답변:
+            안녕하세요, 청년 주거정책팀입니다.
+
+            【추천 정책】
+            ▶ [정책명]
+            - 개요: 정책 설명 + 지원 규모/대상
+            - 지원 내용: 지원 유형(전세대출/월세지원/공공임대 등), 금액 및 한도
+            - 참여 자격: 연령/소득/거주지/혼인/무주택 요건
+            - 신청 방법: 신청 기간, 경로, 절차 요약
+            - 신청 URL: 제공된 URL (없으면 "정보 없음")
+
+            (✅ 정책이 여러 개면 위 ▶ 블록을 정책 수만큼 반복)
+
+            【추가 확인 필요】
+            - [정책명]: 한 줄 사유
+
+            【자격 미충족 안내】
+            다음 정책들은 자격 요건이 맞지 않아 상세 안내에서 제외했습니다: [정책명], [정책명] ...
+
+            [필수 확인사항]
+            ✓ 신청 마감일 반드시 확인
+            ✓ 소득/자산 기준 사전 점검
+            ✓ 필요 서류 사전 준비
+
+            친절하게 안내해드리겠습니다.
+            감사합니다.""",
         )
 
-    async def run(self, question: str) -> DomainResult:
-        token = _last_search_policies.set([])   # 이 task 컨텍스트만 초기화
-        try:
-            result = await self.agent.ainvoke(
-                {"messages": [{"role": "user", "content": question}]}
-            )
-            policies = _last_search_policies.get()
-        finally:
-            _last_search_policies.reset(token)
+    async def run(
+            self, inquiry: str, knowledge: str, user_profile: dict | None = None) -> str:
 
-        text = result["messages"][-1].content
-        source = "rag" if policies else "none"
-        return DomainResult(text=text, policies=policies, category=_CATEGORY, source=source)
+        # ✅ 라벨이 붙은 정책 개수 카운트
+        eligible_count = knowledge.count("✅ 자격 적합")
+        ineligible_count = knowledge.count("❌ 자격 미충족")
+        
+        prompt = (
+            "다음 정보를 바탕으로 주거 정책 답변을 작성하세요. \n\n"
+            f"[질문]\n{inquiry}\n\n"
+            f"[정책정보]\n{knowledge or '(검색한 정책 없음)'}\n"
+        )
+        
+        if user_profile:
+            prompt += f"\n[사용자 정보]\n{user_profile}\n"
+
+        # 강제 지시 (시스템 프롬프트보다 강력)
+        if eligible_count > 0:
+            prompt += (
+                f"\n\n[필수 준수] 정책 정보에 ✅ 자격 적합 정책이 정확히 "
+                f"{eligible_count}개 있습니다. 【추천 정책】 섹션에 반드시 "
+                f"{eligible_count}개 모두 ▶ 블록으로 나열하세요. "
+                f"1개만 안내하면 답변이 무효입니다.\n"
+            )
+        if ineligible_count > 0:
+            prompt += (
+                f"❌ 자격 미충족 정책이 {ineligible_count}개 있습니다. "
+                f"【자격 미충족 안내】 섹션에 모두 나열하세요.\n"
+            )
+
+        result = await self.agent.ainvoke(
+            {"messages": [{"role": "user", "content": prompt}]}
+        )
+
+        return result["messages"][-1].content
 
 
 HousingAgentDep = Annotated[HousingAgent, Depends(HousingAgent)]
