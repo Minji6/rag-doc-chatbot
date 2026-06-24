@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
-from ..constants import AGENT_CATEGORY
+from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +55,18 @@ class EmploymentAgent:
                 3. 기관(고용센터 등)을 통한 신청
                 4. 자격 심사 및 최종 선정
 
+                [신청 URL]
+                - 정책 정보의 "신청 URL" 값을 raw URL 그대로 출력하세요 (예: 신청 URL: https://www.example.com)
+                - 마크다운 링크 형식([신청하기](URL))으로 감싸지 마세요
+                - URL이 "정보 없음"이면 "신청 URL: 정보 없음"으로 표기
+
                 [필수 확인사항]
                 ✓ 신청 마감일 반드시 확인
                 ✓ 지원 대상 연령/고용 상태 확인
                 ✓ 필요 서류 사전 준비
 
                 친절하게 안내해드리겠습니다.
-                감사합니다."""
+                감사합니다.""" + OUTPUT_FORMAT_GUIDE
         )
 
     async def run(

@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
-from ..constants import AGENT_CATEGORY, INQUIRY_TYPES
+from ..constants import AGENT_CATEGORY, INQUIRY_TYPES, OUTPUT_FORMAT_GUIDE
 
 logger = logging.getLogger(__name__)
 
@@ -147,8 +147,11 @@ class EducationAgent:
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
         self.logger = logging.getLogger(f"{__name__}.EducationAgent")
         # inquiry_type별 agent를 초기화 시점에 미리 생성 (요청마다 생성하지 않음)
+        # 모든 프롬프트 끝에 OUTPUT_FORMAT_GUIDE를 붙여 분야간 출력 형식을 통일.
         self._agents = {
-            inquiry_type: create_agent(model=model, tools=[], system_prompt=prompt)
+            inquiry_type: create_agent(
+                model=model, tools=[], system_prompt=prompt + OUTPUT_FORMAT_GUIDE
+            )
             for inquiry_type, prompt in _SYSTEM_PROMPTS.items()
         }
 
