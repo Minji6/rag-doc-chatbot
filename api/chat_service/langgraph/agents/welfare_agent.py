@@ -8,7 +8,7 @@ from langchain.tools import tool
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain.chat_models import init_chat_model
-from ..constants import AGENT_CATEGORY
+from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE
 
 logger = logging.getLogger(__name__)
 
@@ -401,6 +401,7 @@ class WelfareAgent:
         system_prompt = _SYSTEM_PROMPT + f"\n\n현재 사용자 role: {user_role}"
         if profile_context:
             system_prompt += f"\n\n{profile_context}"
+        system_prompt += OUTPUT_FORMAT_GUIDE
         return create_agent(model=self._model, tools=_TOOLS, system_prompt=system_prompt)
 
     async def run(

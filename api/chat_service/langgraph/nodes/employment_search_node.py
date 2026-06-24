@@ -97,7 +97,7 @@ async def employment_search_node(state: ShareState) -> dict:
 
     if not documents_with_dday:
         logger.info("취업 정책 검색 결과 없음")
-        return {"knowledge_base": "", "policies": []}
+        return {"employment_knowledge_base": "", "employment_policies": []}
 
     policies = [_pick_policy_fields(doc.metadata) for doc, _, _ in documents_with_dday]
 
@@ -111,4 +111,4 @@ async def employment_search_node(state: ShareState) -> dict:
     knowledge = "\n".join(lines)
 
     logger.info("취업 정책 검색 완료 — %d건", len(policies))
-    return {"knowledge_base": knowledge, "policies": policies}
+    return {"employment_knowledge_base": knowledge, "employment_policies": policies}

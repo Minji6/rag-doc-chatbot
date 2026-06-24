@@ -99,7 +99,7 @@ async def education_search_node(state: ShareState) -> dict:
 
     if not documents:
         logger.info("교육 정책 검색 결과 없음")
-        return {"knowledge_base": "", "policies": []}
+        return {"education_knowledge_base": "", "education_policies": []}
 
     policies = [_pick_policy_fields(doc.metadata) for doc, _ in documents]
 
@@ -111,4 +111,4 @@ async def education_search_node(state: ShareState) -> dict:
     knowledge = "\n".join(lines)
 
     logger.info("교육 정책 검색 완료 — %d건 (threshold=%.1f)", len(policies), threshold)
-    return {"knowledge_base": knowledge, "policies": policies}
+    return {"education_knowledge_base": knowledge, "education_policies": policies}

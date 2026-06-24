@@ -3,6 +3,8 @@ from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 
+from ..constants import OUTPUT_FORMAT_GUIDE
+
 logger = logging.getLogger(__name__)
 
 ##############################################################
@@ -57,7 +59,7 @@ class HousingAgent:
             ✓ 필요 서류 사전 준비
 
             친절하게 안내해드리겠습니다.
-            감사합니다.""",
+            감사합니다.""" + OUTPUT_FORMAT_GUIDE,
         )
 
     async def run(

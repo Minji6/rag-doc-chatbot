@@ -186,7 +186,7 @@ async def housing_search_node(state: ShareState) -> dict:
     
     if not documents:
         logger.info("주거 정책 검색 결과 없음")
-        return {"knowledge_base": "", "policies": []}
+        return {"housing_knowledge_base": "", "housing_policies": []}
     
     # 자격 진단 결과 기준으로 정렬: eligible → unknown → ineligible
     def _sort_key(item):
@@ -214,4 +214,4 @@ async def housing_search_node(state: ShareState) -> dict:
     knowledge = "\n".join(lines)
     
     logger.info("주거 정책 검색 완료 - %d건", len(policies))
-    return {"knowledge_base": knowledge, "policies": policies}
+    return {"housing_knowledge_base": knowledge, "housing_policies": policies}
