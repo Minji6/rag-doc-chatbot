@@ -29,15 +29,18 @@ class ShareState(TypedDict):
     user_role: str         # "guest" 또는 "user" (로그인 여부)
     user_profile: dict     # 로그인 유저 프로필 (guest일 경우 빈 dict)
 
-    category: str          # 분야: 주거 / 취업 / 교육 / 복지 (constants.py 참고)
+    category: list[str]    # 분야 리스트: ["주거", "일자리", ...] — 멀티 분야 라우팅용
     inquiry_type: str      # 의도: 검색 / 추천 / 상세조회 / 비교 (constants.py 참고)
 
-    # 검색 노드 → 생성 노드 핸드오프 채널 (검색/생성 분리 구조)
-    # 검색 노드가 채우고, 도메인 생성 노드가 읽음.
-    knowledge_base: str         # 교육 검색 노드 → 교육 생성 노드
-    policies: list[dict]        # 교육 검색 노드 → 교육 생성 노드 (gather 후처리용)
-    welfare_knowledge_base: str         # 복지 검색 노드 → 복지 생성 노드
-    welfare_policies: list[dict]        # 복지 검색 노드 → 복지 생성 노드 (gather 후처리용)
+    # 검색 노드 → 생성 노드 핸드오프 채널 (도메인별로 분리 — fan-out 시 동시 쓰기 충돌 방지)
+    housing_knowledge_base: str
+    housing_policies: list[dict]
+    employment_knowledge_base: str
+    employment_policies: list[dict]
+    education_knowledge_base: str
+    education_policies: list[dict]
+    welfare_knowledge_base: str
+    welfare_policies: list[dict]
 
     housing_result: DomainResult        # 주거 에이전트 답변
     employment_result: DomainResult     # 취업 에이전트 답변

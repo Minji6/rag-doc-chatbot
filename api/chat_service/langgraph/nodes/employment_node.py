@@ -17,8 +17,8 @@ async def employment_node(state: ShareState) -> dict:
     """
     logger.info("취업 정책 생성 노드 실행")
 
-    knowledge = state.get("knowledge_base", "")
-    policies = state.get("policies", [])
+    knowledge = state.get("employment_knowledge_base", "")
+    policies = state.get("employment_policies", [])
 
     text = await agent.run(
         inquiry=state["user_inquiry"],

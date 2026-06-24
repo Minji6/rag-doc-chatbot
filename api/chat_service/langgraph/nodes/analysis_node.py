@@ -11,8 +11,13 @@ logger = logging.getLogger(__name__)
 class InquiryAnalysis(BaseModel):
     """사용자 질문의 분야·의도 분류 결과 구조화 출력 스키마"""
     category: Annotated[
-        str,
-        Field(description=f"정책 분야. 다음 중 하나만 사용: {', '.join(CATEGORIES)}")
+        list[str],
+        Field(
+            description=(
+                f"정책 분야 리스트. 다음 중에서만 선택: {', '.join(CATEGORIES)}. "
+                f"질문이 한 분야면 1개, 여러 분야에 걸치면 모두 나열."
+            )
+        )
     ]
     inquiry_type: Annotated[
         str,
@@ -27,11 +32,16 @@ _structured_model = _chat_model.with_structured_output(InquiryAnalysis)
 _SYSTEM_PROMPT = f"""당신은 청년정책 챗봇의 의도 분석기입니다.
 사용자 질문을 아래 두 기준으로 분류하세요.
 
-[분야 - category] {', '.join(CATEGORIES)} 중 하나
+[분야 - category] {', '.join(CATEGORIES)} 중에서 선택 (복수 가능)
 - 일자리: 취업·창업·재직자 지원 등
 - 주거: 전세대출·월세지원·공공주택 등
 - 교육: 장학금·학자금·내일배움카드 등
 - 복지문화: 금융지원·문화예술·복지 등
+
+분류 규칙:
+- 한 분야에 해당하면 그 분야만 리스트에 담아 반환 (예: ["주거"])
+- 여러 분야에 걸치면 해당하는 분야를 모두 리스트에 담아 반환 (예: ["주거", "일자리"])
+- 명확히 한 분야가 떠오르면 그 하나만 선택. 모호할 때만 복수 선택.
 
 [의도 - inquiry_type] {', '.join(INQUIRY_TYPES)} 중 하나
 - 검색: 특정 키워드로 정책을 찾고 싶어함
@@ -50,5 +60,7 @@ async def analysis_node(state: ShareState) -> dict:
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": state["user_inquiry"]},
     ]))
-    logger.info("분류 결과 — category=%s, inquiry_type=%s", analysis.category, analysis.inquiry_type)
-    return {"category": analysis.category, "inquiry_type": analysis.inquiry_type}
+    # LLM이 빈 리스트를 반환하는 케이스 방어 — 라우팅 fallback이 받아 처리
+    categories = analysis.category or []
+    logger.info("분류 결과 — category=%s, inquiry_type=%s", categories, analysis.inquiry_type)
+    return {"category": categories, "inquiry_type": analysis.inquiry_type}

@@ -35,11 +35,16 @@ def _build_profile_query(inquiry: str, user_profile: dict) -> str:
     """추천 의도일 때 유저 프로필을 쿼리에 덧붙여 벡터 검색 품질을 높인다.
 
     실제 user_profile 키(auth_service/model.py 기준):
-    birth_date, schoolcd, plcymajorcd, jobcd, earncndsecd
+    birth_date, zipcd, schoolcd, plcymajorcd, jobcd, earncndsecd, mrgsttscd, sbizcd
+
+    '제한없음'은 유효한 값으로 그대로 포함한다 — 제한 없는 정책과 매칭되도록.
+    None/빈값만 제외한다.
     """
     profile_parts = []
     if user_profile.get("birth_date"):
         profile_parts.append(f"생년월일:{user_profile['birth_date']}")
+    if user_profile.get("zipcd"):
+        profile_parts.append(f"거주지역:{user_profile['zipcd']}")
     if user_profile.get("schoolcd"):
         profile_parts.append(f"학교:{user_profile['schoolcd']}")
     if user_profile.get("plcymajorcd"):
@@ -47,7 +52,11 @@ def _build_profile_query(inquiry: str, user_profile: dict) -> str:
     if user_profile.get("jobcd"):
         profile_parts.append(f"직업:{user_profile['jobcd']}")
     if user_profile.get("earncndsecd") is not None:
-        profile_parts.append(f"소득조건:{user_profile['earncndsecd']}")
+        profile_parts.append(f"월소득:{user_profile['earncndsecd']}원")
+    if user_profile.get("mrgsttscd"):
+        profile_parts.append(f"혼인상태:{user_profile['mrgsttscd']}")
+    if user_profile.get("sbizcd"):
+        profile_parts.append(f"소상공인업종:{user_profile['sbizcd']}")
 
     return f"{inquiry} / {' '.join(profile_parts)}" if profile_parts else inquiry
 
@@ -99,7 +108,7 @@ async def education_search_node(state: ShareState) -> dict:
 
     if not documents:
         logger.info("교육 정책 검색 결과 없음")
-        return {"knowledge_base": "", "policies": []}
+        return {"education_knowledge_base": "", "education_policies": []}
 
     policies = [_pick_policy_fields(doc.metadata) for doc, _ in documents]
 
@@ -111,4 +120,4 @@ async def education_search_node(state: ShareState) -> dict:
     knowledge = "\n".join(lines)
 
     logger.info("교육 정책 검색 완료 — %d건 (threshold=%.1f)", len(policies), threshold)
-    return {"knowledge_base": knowledge, "policies": policies}
+    return {"education_knowledge_base": knowledge, "education_policies": policies}

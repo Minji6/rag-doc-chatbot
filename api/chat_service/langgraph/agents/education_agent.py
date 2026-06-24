@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 from langchain.tools import tool
-from ..constants import AGENT_CATEGORY, INQUIRY_TYPES
+from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ _INCOME_GRADE_THRESHOLDS = [
     (1.30, 6),
     (1.50, 7),
     (2.00, 8),
+    (2.50, 9),
 ]
 
 #----------------------------------------------
@@ -66,7 +67,12 @@ _GPA_PATTERN = re.compile(
 def estimate_income_grade(monthly_income: int, family_size: int) -> str:
     """
     가구 월소득과 가구원 수로 소득분위를 추정합니다.
-    사용자가 소득분위를 모를 때, 또는 장학금·교육 지원 신청 가능 여부를 판단할 때 호출하세요.
+    다음 상황에서 반드시 호출하세요:
+    - 사용자가 소득분위를 모른다고 할 때
+    - 사용자가 월소득과 가구원 수를 직접 제시하며 소득분위를 물을 때
+    - 장학금·교육 지원 신청 가능 여부를 판단할 때
+    [사용자 정보]에 월소득(earncndsecd, 단위: 원)이 있으면 monthly_income으로 바로 사용하되,
+    가구원 수(family_size)를 사용자가 명시하지 않았으면 임의로 가정하지 말고 반드시 먼저 물어보세요.
 
     Args:
         monthly_income: 가구 월 소득 합계 (원, 예: 3500000)
@@ -100,7 +106,7 @@ def estimate_income_grade(monthly_income: int, family_size: int) -> str:
         if grade <= 3:
             lines.append("  💡 저소득층 우선 지원 대상으로 더 높은 금액을 받을 수 있습니다.")
     else:
-        lines.append(f"  ❌ {grade}분위 — 국가장학금 신청 대상 외 (소득 9~10분위)")
+        lines.append(f"  ❌ {grade}분위 — 국가장학금 신청 대상 외 (소득 9~10분위 해당)")
 
     lines.append("※ 실제 소득분위는 한국장학재단 심사 결과와 다를 수 있습니다.")
     return "\n".join(lines)
@@ -112,7 +118,8 @@ def filter_by_gpa(policies_json: str, user_gpa: float) -> str:
     사용자 학점 미달로 신청 불가한 정책을 감지합니다.
     학점 조건이 명시된 정책 중 미달인 것만 반환하므로,
     반환 목록에 없는 정책은 학점 조건 없음 또는 충족으로 간주하여 추천하세요.
-    사용자가 본인 학점을 언급할 때 호출하세요.
+    사용자가 대화에서 본인 학점을 명시적으로 언급했을 때만 호출하세요.
+    학점 정보가 없으면 절대 호출하지 마세요.
 
     Args:
         policies_json: 정책 목록 JSON 문자열 (프롬프트의 [정책 구조화 데이터]에서 추출)
@@ -121,6 +128,8 @@ def filter_by_gpa(policies_json: str, user_gpa: float) -> str:
         str: 학점 미달로 추천에서 제외해야 할 정책 목록 (없으면 전부 추천 가능)
     """
     logger.info("filter_by_gpa 실행: user_gpa=%.2f", user_gpa)
+    if user_gpa <= 0:
+        return "학점 정보 없음 — 사용자가 학점을 명시적으로 언급한 경우에만 이 도구를 호출하세요."
     try:
         policies = json.loads(policies_json)
         if not isinstance(policies, list):
@@ -136,10 +145,14 @@ def filter_by_gpa(policies_json: str, user_gpa: float) -> str:
             str(p.get("plcyExplnCn") or ""),
             str(p.get("ptcpPrpTrgtCn") or ""),
             str(p.get("plcySprtCn") or ""),
+            str(p.get("addAplyQlfcCndCn") or ""),
         ])
         match = _GPA_PATTERN.search(content)
         if match:
             required = float(match.group(1))
+            if required > 10:
+                # 100점 만점 표기로 추정 — 4.5 만점 학점과 비교 불가, 스킵
+                continue
             if user_gpa < required:
                 blocked.append(f"  ❌ {name} (최소 {required:.1f}점 → 현재 {user_gpa:.2f}점으로 미달)")
 
@@ -207,7 +220,7 @@ _SYSTEM_PROMPTS = {
 [정책 정보]가 비어 있으면, 관련 정책을 찾지 못했다고 솔직하게 안내하세요.
 
 다음 도구를 적극 활용하세요:
-- estimate_income_grade: 사용자가 소득분위를 모를 때 월소득과 가구원 수로 추정
+- estimate_income_grade: 소득분위 추정이 필요할 때 호출. [사용자 정보]에 월소득(earncndsecd)이 있으면 그 값을 monthly_income으로 사용하고, 가구원 수(family_size)는 사용자에게 물어보세요
 - filter_by_gpa: 사용자가 학점을 언급할 때 호출 — 학점 미달로 추천 불가한 정책을 감지하여 제외하세요. 반환 목록에 없는 정책은 그대로 추천하세요
 - classify_training_coverage: 훈련비 지원 여부(급여/비급여) 분류 요청 시
 
@@ -251,7 +264,7 @@ _SYSTEM_PROMPTS = {
 [사용자 정보]가 없으면(비로그인) 일반적인 추천 기준으로 안내하세요.
 
 다음 도구를 적극 활용하세요:
-- estimate_income_grade: 사용자가 소득분위를 모를 때 월소득과 가구원 수로 추정 후 맞춤 추천
+- estimate_income_grade: 소득분위 추정이 필요할 때 호출. [사용자 정보]에 월소득(earncndsecd)이 있으면 그 값을 monthly_income으로 사용하고, 가구원 수(family_size)는 사용자에게 물어보세요
 - filter_by_gpa: 사용자 학점으로 신청 가능한 정책만 필터링하여 추천
 - classify_training_coverage: 훈련비 지원 여부를 확인해 추천 근거로 활용
 
@@ -371,8 +384,11 @@ class EducationAgent:
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
         self.logger = logging.getLogger(f"{__name__}.EducationAgent")
         # inquiry_type별 agent를 초기화 시점에 미리 생성 (요청마다 생성하지 않음)
+        # 모든 프롬프트 끝에 OUTPUT_FORMAT_GUIDE를 붙여 분야간 출력 형식을 통일.
         self._agents = {
-            inquiry_type: create_agent(model=model, tools=_TOOLS, system_prompt=prompt)
+            inquiry_type: create_agent(
+                model=model, tools=_TOOLS, system_prompt=prompt + OUTPUT_FORMAT_GUIDE
+            )
             for inquiry_type, prompt in _SYSTEM_PROMPTS.items()
         }
 
@@ -382,7 +398,7 @@ class EducationAgent:
         knowledge: str,
         policies: list | None = None,
         user_profile: dict | None = None,
-        inquiry_type: str = INQUIRY_TYPES[0],
+        inquiry_type: str = "검색",
     ) -> str:
         """검색된 정책(knowledge)으로 답변을 생성한다. (검색은 하지 않음)
 
@@ -395,7 +411,7 @@ class EducationAgent:
         Returns:
             str: 생성된 사용자용 답변 텍스트
         """
-        agent = self._agents.get(inquiry_type, self._agents[INQUIRY_TYPES[0]])
+        agent = self._agents.get(inquiry_type, self._agents["검색"])
 
         prompt = (
             "다음 정보를 바탕으로 교육 정책 답변을 작성하세요.\n\n"
