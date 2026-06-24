@@ -131,33 +131,36 @@ async def extract_user_profile(
     )
 
     llm = init_chat_model("gpt-4o-mini", model_provider="openai", temperature=0)
-    result = await llm.ainvoke([
-        SystemMessage(content=(
-            "사용자와의 대화에서 새로 파악된 정보를 추출하고, 아래 JSON 형식으로만 응답하세요.\n\n"
-            f"이미 알고 있는 정보 (new_fields에 포함하지 마세요):\n{filled_summary}\n\n"
-            f"아직 모르는 항목 (이 중에서만 추출하고 질문하세요):\n{empty_summary}\n\n"
-            "응답 형식 (JSON만, 다른 텍스트 금지):\n"
-            "{{\n"
-            '  "new_fields": {{"필드명": "값", ...}},\n'
-            '  "questions": "비어있는 항목 중 1~2가지 유도 질문 (없으면 빈 문자열)"\n'
-            "}}\n\n"
-            "new_fields 규칙:\n"
-            "- 대화에서 명확히 언급된 값만 포함\n"
-            "- 언급되지 않은 항목은 포함하지 마세요\n"
-            "- 필드명은 반드시 아직 모르는 항목의 키(예: jobcd, earncndsecd)를 사용하세요"
-        )),
-        HumanMessage(content=conversation_text),
-    ])
-
-    raw = _strip_code_fence(str(result.content))
     try:
+        result = await llm.ainvoke([
+            SystemMessage(content=(
+                "사용자와의 대화에서 새로 파악된 정보를 추출하고, 아래 JSON 형식으로만 응답하세요.\n\n"
+                f"이미 알고 있는 정보 (new_fields에 포함하지 마세요):\n{filled_summary}\n\n"
+                f"아직 모르는 항목 (이 중에서만 추출하고 질문하세요):\n{empty_summary}\n\n"
+                "응답 형식 (JSON만, 다른 텍스트 금지):\n"
+                "{{\n"
+                '  "new_fields": {{"필드명": "값", ...}},\n'
+                '  "questions": "비어있는 항목 중 1~2가지 유도 질문 (없으면 빈 문자열)"\n'
+                "}}\n\n"
+                "new_fields 규칙:\n"
+                "- 대화에서 명확히 언급된 값만 포함\n"
+                "- 언급되지 않은 항목은 포함하지 마세요\n"
+                "- 필드명은 반드시 아직 모르는 항목의 키(예: jobcd, earncndsecd)를 사용하세요"
+            )),
+            HumanMessage(content=conversation_text),
+        ])
+        raw = _strip_code_fence(str(result.content))
         parsed = json.loads(raw)
         new_fields: dict = {k: v for k, v in parsed.get("new_fields", {}).items() if v and k in _PROFILE_FIELDS}
         questions: str = parsed.get("questions", "")
     except (json.JSONDecodeError, AttributeError):
-        logger.warning("extract_user_profile JSON 파싱 실패, 원문 반환")
+        logger.warning("extract_user_profile JSON 파싱 실패")
         new_fields = {}
-        questions = raw
+        questions = ""
+    except Exception as e:
+        logger.error("extract_user_profile 실패: %s", e)
+        new_fields = {}
+        questions = ""
 
     return questions, new_fields
 
