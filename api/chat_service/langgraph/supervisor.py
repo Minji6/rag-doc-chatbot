@@ -1,6 +1,6 @@
 # api/chat_service/langgraph/supervisor.py
 import logging
-from typing import Annotated
+from typing import Annotated, Hashable
 from fastapi import Depends
 from langgraph.graph import END, START, StateGraph
 
@@ -14,6 +14,7 @@ from .nodes.employment_search_node import employment_search_node
 from .nodes.employment_node import employment_node
 from .nodes.education_search_node import education_search_node
 from .nodes.education_node import education_node
+from .nodes.welfare_search_node import welfare_search_node
 from .nodes.welfare_node import welfare_node
 from .nodes.route_node_fun import route_node_fun
 from .nodes.gather_node import gather_node
@@ -35,7 +36,8 @@ class ChatbotSupervisor:
         graph.add_node("employment", employment_node)
         graph.add_node("education_search", education_search_node)  # 교육: 검색 노드
         graph.add_node("education", education_node)                # 교육: 생성 노드
-        graph.add_node("welfare", welfare_node)
+        graph.add_node("welfare_search", welfare_search_node)      # 복지: 검색 노드
+        graph.add_node("welfare", welfare_node)                    # 복지: 생성 노드
         graph.add_node("gather", gather_node)
         graph.add_node("housing_search", housing_search_node)  # 주거: 검색 노드
         graph.add_node("housing", housing_node)                # 주거: 생성 노드
@@ -47,10 +49,11 @@ class ChatbotSupervisor:
         # (education_search → education → gather)
         # (employment_search → employment → gather)
         node_names = set(CATEGORY_ROUTING.values())
-        route_map = {name: name for name in node_names}
+        route_map: dict[Hashable, str] = {name: name for name in node_names}
         route_map["education"] = "education_search"
         route_map["employment"] = "employment_search"
         route_map["housing"] = "housing_search" 
+        route_map["welfare"] = "welfare_search"
         graph.add_conditional_edges(
             "analysis",
             route_node_fun,
@@ -61,6 +64,7 @@ class ChatbotSupervisor:
         graph.add_edge("education_search", "education")
         graph.add_edge("employment_search", "employment")
         graph.add_edge("housing_search", "housing")  # 
+        graph.add_edge("welfare_search", "welfare")
 
         # 도메인 노드 → 전부 gather로 모임 (명세서 개요 구조)
         for node_name in node_names:
@@ -88,6 +92,8 @@ class ChatbotSupervisor:
             inquiry_type="",
             knowledge_base="",
             policies=[],
+            welfare_knowledge_base="",
+            welfare_policies=[],
             housing_result=empty_domain_result(AGENT_CATEGORY["housing"]),
             employment_result=empty_domain_result(AGENT_CATEGORY["employment"]),
             education_result=empty_domain_result(AGENT_CATEGORY["education"]),
