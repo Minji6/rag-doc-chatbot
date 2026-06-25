@@ -16,7 +16,7 @@ from .nodes.education_node import education_node
 from .nodes.welfare_search_node import welfare_search_node
 from .nodes.welfare_node import welfare_node
 from .nodes.route_node_fun import route_node_fun
-from .nodes.gather_node import gather_node
+from .nodes.composer_node import composer_node
 from .nodes.image_analysis_node import image_analysis_node
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class ChatbotSupervisor:
         graph.add_node("education", education_node)                # 교육: 생성 노드
         graph.add_node("welfare_search", welfare_search_node)      # 복지: 검색 노드
         graph.add_node("welfare", welfare_node)                    # 복지: 생성 노드
-        graph.add_node("gather", gather_node)
+        graph.add_node("composer", composer_node)                  # 조립: fragment → 최종 답변
         graph.add_node("housing_search", housing_search_node)  # 주거: 검색 노드
         graph.add_node("housing", housing_node)                # 주거: 생성 노드
         # 시작 → 이미지 분석 → 의도 분석 (이미지 없으면 image_analysis_node가 즉시 통과)
@@ -67,11 +67,11 @@ class ChatbotSupervisor:
         graph.add_edge("housing_search", "housing")  # 
         graph.add_edge("welfare_search", "welfare")
 
-        # 도메인 생성 노드 → 전부 gather로 모임. fan-out 시 활성화된 가지만 gather에 도달.
+        # 도메인 생성 노드 → 전부 composer로 모임(fan-in). fan-out 시 활성화된 가지만 composer에 도달.
         for domain_node in ("employment", "housing", "education", "welfare"):
-            graph.add_edge(domain_node, "gather")
+            graph.add_edge(domain_node, "composer")
 
-        graph.add_edge("gather", END)
+        graph.add_edge("composer", END)
 
         self.workflow = graph.compile()
 
@@ -88,7 +88,7 @@ class ChatbotSupervisor:
 
         Returns:
             dict: {
-                "message": str — gather가 생성한 최종 답변 텍스트,
+                "message": str — composer가 조립한 최종 답변 텍스트,
                 "category": list[str] — analysis_node가 분류한 분야 리스트 (멀티 가능),
                 "inquiry_type": str — 의도 ("검색"/"추천"/"상세조회"/"비교"),
                 "policies": list[dict] — 활성 도메인의 raw 정책 메타 (D-day 계산 등 프론트 처리용),

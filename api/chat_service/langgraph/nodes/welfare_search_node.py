@@ -37,7 +37,7 @@ async def welfare_search_node(state: ShareState) -> dict:
     (검색/생성 분리 구조 — 생성은 welfare_node가 담당)
 
     - welfare_knowledge_base: 생성 노드가 답변 근거로 읽을 정책 텍스트
-    - welfare_policies: gather 후처리(비교/점수)용 raw 정책 메타
+    - welfare_policies: composer 후처리(비교/점수)용 raw 정책 메타
     """
     query = state["user_inquiry"]
     logger.info("복지문화 정책 검색 노드 실행 — query=%s", query[:30])

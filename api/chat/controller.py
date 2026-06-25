@@ -30,11 +30,12 @@ async def chat(request: ChatRequest):
     history = await _history_agent.get_history(conversation_id)
     logger.info(f"[{conversation_id}] 이전 대화 {len(history['messages'])}개 로드")
 
-    answer = await _supervisor.run(
+    result = await _supervisor.run(
         user_inquiry=request.message,
         user_role="guest",
         messages=history["messages"],
     )
+    answer = result["message"]
 
     await _history_agent.save_exchange(request.message, answer, conversation_id)
     logger.info(f"[{conversation_id}] 대화 저장 완료")

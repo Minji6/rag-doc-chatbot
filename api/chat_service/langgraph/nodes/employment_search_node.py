@@ -74,7 +74,7 @@ async def employment_search_node(state: ShareState) -> dict:
     (검색/생성 분리 구조 — 생성은 employment_node가 담당)
 
     - domain_knowledge["employment"]: 생성 노드가 답변 근거로 읽을 정책 텍스트
-    - domain_policies["employment"]: gather 후처리(비교/점수)용 raw 정책 메타
+    - domain_policies["employment"]: composer 후처리(비교/점수)용 raw 정책 메타
     """
     query = state["user_inquiry"]
     logger.info("취업 정책 검색 노드 실행 — query=%s", query[:30])
