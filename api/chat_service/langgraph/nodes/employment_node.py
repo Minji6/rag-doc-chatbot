@@ -12,13 +12,13 @@ _CATEGORY = AGENT_CATEGORY["employment"]
 async def employment_node(state: ShareState) -> dict:
     """취업 정책 생성 노드.
 
-    검색 노드(employment_search_node)가 state에 넣어둔 knowledge_base/policies를 읽어
-    답변을 생성하고 DomainResult로 반환한다. (검색은 하지 않음)
+    검색 노드(employment_search_node)가 state.domain_knowledge/policies["employment"]에 넣어둔
+    값을 읽어 답변을 생성하고 DomainResult로 반환한다. (검색은 하지 않음)
     """
     logger.info("취업 정책 생성 노드 실행")
 
-    knowledge = state.get("employment_knowledge_base", "")
-    policies = state.get("employment_policies", [])
+    knowledge = state.get("domain_knowledge", {}).get("employment", "")
+    policies = state.get("domain_policies", {}).get("employment", [])
 
     text = await agent.run(
         inquiry=state["user_inquiry"],
@@ -30,4 +30,4 @@ async def employment_node(state: ShareState) -> dict:
     result = DomainResult(
         text=text, policies=policies, category=_CATEGORY, source=source
     )
-    return {"employment_result": result}
+    return {"domain_results": {"employment": result}}

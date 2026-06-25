@@ -44,18 +44,18 @@ async def chat(
     history = await agent.get_history(thread_id)
     logger.info(f"[{thread_id}] 이전 대화 {len(history['messages'])}개 로드")
 
-    response = await supervisor.run(
+    result = await supervisor.run(
         user_inquiry=message,
         user_role=role,
         user_profile=user_profile,
         messages=history["messages"]
     )
 
-    # 새 대화 저장 - LLM에 재호출 없이 checkpointer에 직접 저장
-    await agent.save_exchange(message, response, thread_id)
+    # 새 대화 저장 - LLM에 재호출 없이 checkpointer에 직접 저장 (저장은 message 본문만)
+    await agent.save_exchange(message, result["message"], thread_id)
     logger.info(f"[{thread_id}] 대화 저장 완료")
 
     return JSONResponse(content={
         "conversation_id": conversation_id,
-        "message": response,
+        **result,   # message, category, inquiry_type, policies
     })

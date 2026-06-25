@@ -73,8 +73,8 @@ async def employment_search_node(state: ShareState) -> dict:
     PGVector에서 취업 정책을 검색해 state에 기록한다. LLM은 사용하지 않는다.
     (검색/생성 분리 구조 — 생성은 employment_node가 담당)
 
-    - knowledge_base: 생성 노드가 답변 근거로 읽을 정책 텍스트
-    - policies: gather 후처리(비교/점수)용 raw 정책 메타
+    - domain_knowledge["employment"]: 생성 노드가 답변 근거로 읽을 정책 텍스트
+    - domain_policies["employment"]: gather 후처리(비교/점수)용 raw 정책 메타
     """
     query = state["user_inquiry"]
     logger.info("취업 정책 검색 노드 실행 — query=%s", query[:30])
@@ -97,7 +97,10 @@ async def employment_search_node(state: ShareState) -> dict:
 
     if not documents_with_dday:
         logger.info("취업 정책 검색 결과 없음")
-        return {"employment_knowledge_base": "", "employment_policies": []}
+        return {
+            "domain_knowledge": {"employment": ""},
+            "domain_policies": {"employment": []},
+        }
 
     policies = [_pick_policy_fields(doc.metadata) for doc, _, _ in documents_with_dday]
 
@@ -111,4 +114,7 @@ async def employment_search_node(state: ShareState) -> dict:
     knowledge = "\n".join(lines)
 
     logger.info("취업 정책 검색 완료 — %d건", len(policies))
-    return {"employment_knowledge_base": knowledge, "employment_policies": policies}
+    return {
+        "domain_knowledge": {"employment": knowledge},
+        "domain_policies": {"employment": policies},
+    }
