@@ -11,14 +11,6 @@ CATEGORY_ROUTING = {
     "복지문화": "welfare",
 }
 
-# gather_node에서 category → 어느 *_result 필드를 읽을지 매핑
-CATEGORY_RESULT_FIELD = {
-    "일자리": "employment_result",
-    "주거": "housing_result",
-    "교육": "education_result",
-    "복지문화": "welfare_result",
-}
-
 # PGVector 정책 컬렉션명 — 도메인 에이전트 4개가 공유
 PGVECTOR_COLLECTION_NAME = "youth_policy_all"
 
