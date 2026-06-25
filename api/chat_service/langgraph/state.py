@@ -56,4 +56,5 @@ class ShareState(TypedDict):
     image_content_type: str | None # 이미지 MIME 타입 (예: "image/jpeg")
     image_context: str             # image_analysis_node가 추출한 이미지 정보 (없으면 빈 문자열)
 
+    suggestions: list[str]     # 교육 에이전트가 생성한 follow-up 질문 (PoC)
     final_response: str        # gather_node가 채우는 최종 답변

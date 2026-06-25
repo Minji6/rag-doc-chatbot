@@ -71,13 +71,14 @@ async def gather_node(state: ShareState) -> dict:
     # - 현재는 일반 흐름으로 패스스루
 
     results = _collect_active_results(state)
+    suggestions = state.get("suggestions", [])
 
     if not results:
-        return {"final_response": _FALLBACK_MESSAGE}
+        return {"final_response": _FALLBACK_MESSAGE, "suggestions": suggestions}
 
     if len(results) == 1:
         # 단일 분야 — 도메인 텍스트 그대로 (각 에이전트가 자체 인사말 포함)
-        return {"final_response": results[0]["text"]}
+        return {"final_response": results[0]["text"], "suggestions": suggestions}
 
     # 멀티 분야 — LLM 도입부 + 분야별 ## 헤더 + concat
     categories = [r["category"] for r in results]
@@ -90,4 +91,4 @@ async def gather_node(state: ShareState) -> dict:
         parts.append("")  # 분야 간 공백 줄
 
     final_response = "\n".join(parts).rstrip() + "\n"
-    return {"final_response": final_response}
+    return {"final_response": final_response, "suggestions": suggestions}

@@ -69,5 +69,5 @@ async def chat(
 
     return JSONResponse(content={
         "conversation_id": conversation_id,
-        **result,   # message, category, inquiry_type, policies
+        **result,   # message, category, inquiry_type, policies, suggestions
     })

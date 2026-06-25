@@ -25,7 +25,7 @@ async def education_node(state: ShareState) -> dict:
     if image_context:
         inquiry = f"{inquiry}\n\n[첨부 이미지 내용]\n{image_context}"
 
-    text = await agent.run(
+    text, suggestions = await agent.run(
         inquiry=inquiry,
         knowledge=knowledge,
         policies=policies,
@@ -37,4 +37,4 @@ async def education_node(state: ShareState) -> dict:
     result = DomainResult(
         text=text, policies=policies, category=_CATEGORY, source=source
     )
-    return {"domain_results": {"education": result}}
+    return {"domain_results": {"education": result}, "suggestions": suggestions}
