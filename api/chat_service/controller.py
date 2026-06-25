@@ -1,6 +1,7 @@
+import base64
 import logging
 from typing import Annotated
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from api.chat_service.langgraph.supervisor import ChatbotSupervisorDep
@@ -23,6 +24,7 @@ async def chat(
     session: OrmSessionDep,
     agent: HistoryAgentByFormDep, # role에 따라 자동 주입
     user_id: Annotated[int | None, Form()] = None,
+    attach: Annotated[UploadFile | None, File()] = None,
 ):
     if role not in (ROLE_USER, ROLE_GUEST):
         raise HTTPException(status_code=422, detail=f"role은 '{ROLE_USER}' 또는 '{ROLE_GUEST}'여야 합니다.")
@@ -37,6 +39,14 @@ async def chat(
         if not user_profile:
             raise HTTPException(status_code=404, detail=f"user_id={user_id} 유저를 찾을 수 없습니다.")
 
+    image_base64 = None
+    image_content_type = None
+    if attach:
+        image_data = await attach.read()
+        image_base64 = base64.b64encode(image_data).decode("utf-8")
+        image_content_type = attach.content_type
+        logger.info(f"[{conversation_id}] 이미지 첨부 수신: {attach.filename} ({len(image_data)} bytes)")
+
     # user → "{user_id}:{conversation_id}", guest → "{conversation_id}"
     thread_id = build_thread_id(role, conversation_id, str(user_id) if user_id else None)
 
@@ -48,7 +58,9 @@ async def chat(
         user_inquiry=message,
         user_role=role,
         user_profile=user_profile,
-        messages=history["messages"]
+        messages=history["messages"],
+        image_base64=image_base64,
+        image_content_type=image_content_type,
     )
 
     # 새 대화 저장 - LLM에 재호출 없이 checkpointer에 직접 저장 (저장은 message 본문만)

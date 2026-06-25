@@ -52,4 +52,8 @@ class ShareState(TypedDict):
     domain_policies: Annotated[dict[str, list[dict]], _merge_dict]  # raw 정책 메타 (gather 후처리용)
     domain_results: Annotated[dict[str, DomainResult], _merge_dict] # 도메인별 최종 결과
 
+    image_base64: str | None       # 사용자가 첨부한 이미지 (base64 인코딩)
+    image_content_type: str | None # 이미지 MIME 타입 (예: "image/jpeg")
+    image_context: str             # image_analysis_node가 추출한 이미지 정보 (없으면 빈 문자열)
+
     final_response: str        # gather_node가 채우는 최종 답변

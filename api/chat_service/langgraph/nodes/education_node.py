@@ -20,8 +20,13 @@ async def education_node(state: ShareState) -> dict:
     knowledge = state.get("domain_knowledge", {}).get("education", "")
     policies = state.get("domain_policies", {}).get("education", [])
 
+    inquiry = state["user_inquiry"]
+    image_context = state.get("image_context", "")
+    if image_context:
+        inquiry = f"{inquiry}\n\n[첨부 이미지 내용]\n{image_context}"
+
     text = await agent.run(
-        inquiry=state["user_inquiry"],
+        inquiry=inquiry,
         knowledge=knowledge,
         policies=policies,
         user_profile=state.get("user_profile"),
