@@ -42,7 +42,8 @@ async def image_analysis_node(state: ShareState) -> dict:
         ])
         image_context = str(result.content).strip()
         logger.info("이미지 분석 완료 — %d자 추출", len(image_context))
-        return {"image_context": image_context}
+        # 분석 완료 후 원본 제거 — checkpointer(PostgreSQL)에 base64 이미지가 영구 저장되는 것을 방지
+        return {"image_context": image_context, "image_base64": None}
     except Exception as e:
         logger.warning("이미지 분석 실패 — 빈 컨텍스트로 계속 진행: %s", e)
-        return {"image_context": ""}
+        return {"image_context": "", "image_base64": None}
