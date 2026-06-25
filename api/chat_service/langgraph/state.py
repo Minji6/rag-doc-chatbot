@@ -52,4 +52,5 @@ class ShareState(TypedDict):
     domain_policies: Annotated[dict[str, list[dict]], _merge_dict]  # raw 정책 메타 (gather 후처리용)
     domain_results: Annotated[dict[str, DomainResult], _merge_dict] # 도메인별 최종 결과
 
+    suggestions: list[str]     # 교육 에이전트가 생성한 follow-up 질문 (PoC)
     final_response: str        # gather_node가 채우는 최종 답변

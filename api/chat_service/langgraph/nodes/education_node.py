@@ -20,7 +20,7 @@ async def education_node(state: ShareState) -> dict:
     knowledge = state.get("domain_knowledge", {}).get("education", "")
     policies = state.get("domain_policies", {}).get("education", [])
 
-    text = await agent.run(
+    text, suggestions = await agent.run(
         inquiry=state["user_inquiry"],
         knowledge=knowledge,
         policies=policies,
@@ -32,4 +32,4 @@ async def education_node(state: ShareState) -> dict:
     result = DomainResult(
         text=text, policies=policies, category=_CATEGORY, source=source
     )
-    return {"domain_results": {"education": result}}
+    return {"domain_results": {"education": result}, "suggestions": suggestions}

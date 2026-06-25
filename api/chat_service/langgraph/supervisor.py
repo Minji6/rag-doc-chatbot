@@ -87,11 +87,12 @@ class ChatbotSupervisor:
                 "category": list[str] — analysis_node가 분류한 분야 리스트 (멀티 가능),
                 "inquiry_type": str — 의도 ("검색"/"추천"/"상세조회"/"비교"),
                 "policies": list[dict] — 활성 도메인의 raw 정책 메타 (D-day 계산 등 프론트 처리용),
+                "suggestions": list[str] — 교육 에이전트가 생성한 follow-up 질문,
             }
         """
         user_profile = user_profile or {}
         initial_state = ShareState(
-            messages= messages or [],
+            messages=messages or [],
             user_inquiry=user_inquiry,
             user_role=user_role,
             user_profile=user_profile,
@@ -100,6 +101,7 @@ class ChatbotSupervisor:
             domain_knowledge={},
             domain_policies={},
             domain_results={},
+            suggestions=[],
             final_response="",
         )
         final_state = await self.workflow.ainvoke(initial_state)
@@ -115,6 +117,7 @@ class ChatbotSupervisor:
             "category": final_state.get("category", []),
             "inquiry_type": final_state.get("inquiry_type", ""),
             "policies": policies,
+            "suggestions": final_state.get("suggestions", []),
         }
 
     def get_graph_image(self) -> bytes:

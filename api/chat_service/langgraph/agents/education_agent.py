@@ -14,7 +14,6 @@ _CATEGORY = AGENT_CATEGORY["education"]
 #----------------------------------------------
 # 소득분위 추정 상수 — 2024년 기준 중위소득 (월, 원)
 #----------------------------------------------
-
 _MEDIAN_INCOME = {
     1: 2_228_445,
     2: 3_682_609,
@@ -41,7 +40,6 @@ _INCOME_GRADE_THRESHOLDS = [
 #----------------------------------------------
 # 급여/비급여 분류 키워드
 #----------------------------------------------
-
 _COVERED_KEYWORDS = [
     "내일배움카드", "국민내일배움카드", "고용보험", "훈련비 지원", "수강료 지원",
     "훈련수당", "훈련장려금", "hrd", "직업훈련", "고용노동부 지원",
@@ -53,7 +51,6 @@ _SELF_FUNDED_KEYWORDS = [
 #----------------------------------------------
 # 학점 조건 파싱 패턴
 #----------------------------------------------
-
 _GPA_PATTERN = re.compile(
     r"(?:학점|평점|성적|gpa)[^\d]{0,10}(\d+\.?\d*)\s*(?:이상|점|/)",
     re.IGNORECASE,
@@ -62,7 +59,6 @@ _GPA_PATTERN = re.compile(
 #----------------------------------------------
 # 도구 정의
 #----------------------------------------------
-
 @tool
 def estimate_income_grade(monthly_income: int, family_size: int) -> str:
     """
@@ -213,7 +209,6 @@ _TOOLS = [estimate_income_grade, filter_by_gpa, classify_training_coverage]
 #----------------------------------------------
 # inquiry_type별 system_prompt
 #----------------------------------------------
-
 _SYSTEM_PROMPTS = {
     "검색": """당신은 청년 교육 정책 전문가입니다.
 제공된 [정책 정보]에만 근거하여 답변하세요. 정보에 없는 정책이나 수치를 임의로 만들어내지 마세요.
@@ -366,7 +361,6 @@ _SYSTEM_PROMPTS = {
 #----------------------------------------------
 # 에이전트
 #----------------------------------------------
-
 class EducationAgent:
     """
     교육 Agent — 생성(generation) 전용.
@@ -399,7 +393,7 @@ class EducationAgent:
         policies: list | None = None,
         user_profile: dict | None = None,
         inquiry_type: str = "검색",
-    ) -> str:
+    ) -> tuple[str, list[str]]:
         """검색된 정책(knowledge)으로 답변을 생성한다. (검색은 하지 않음)
 
         Args:
@@ -409,7 +403,7 @@ class EducationAgent:
             user_profile: 유저 프로필 (guest면 None/빈 dict)
             inquiry_type: 질문 의도 — 검색/추천/상세조회/비교
         Returns:
-            str: 생성된 사용자용 답변 텍스트
+            tuple[str, list[str]]: (답변 텍스트, follow-up 질문 목록)
         """
         agent = self._agents.get(inquiry_type, self._agents["검색"])
 
@@ -423,10 +417,36 @@ class EducationAgent:
         if user_profile:
             prompt += f"\n[사용자 정보]\n{user_profile}\n"
 
+        prompt += (
+            "\n\n답변 작성 후 반드시 아래 구분자와 함께 사용자가 다음에 할 법한 "
+            "follow-up 질문 3개를 JSON 배열로 추가하세요.\n"
+            "---SUGGESTIONS---\n"
+            "[\"질문1\", \"질문2\", \"질문3\"]"
+        )
+
         result = await agent.ainvoke(
             {"messages": [{"role": "user", "content": prompt}]}
         )
-        return result["messages"][-1].content
+        content = result["messages"][-1].content
+        return self._parse_suggestions(content)
+
+    @staticmethod
+    def _parse_suggestions(content: str) -> tuple[str, list[str]]:
+        """LLM 응답에서 본문과 suggestions를 분리한다."""
+        separator = "---SUGGESTIONS---"
+        if separator not in content:
+            return content.strip(), []
+        parts = content.split(separator, 1)
+        text = parts[0].strip()
+        try:
+            suggestions = json.loads(parts[1].strip())
+            if not isinstance(suggestions, list):
+                suggestions = []
+            else:
+                suggestions = [s for s in suggestions if isinstance(s, str)]
+        except (json.JSONDecodeError, IndexError):
+            suggestions = []
+        return text, suggestions
 
 
 EducationAgentDep = Annotated[EducationAgent, Depends(EducationAgent)]
