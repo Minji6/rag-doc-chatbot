@@ -51,7 +51,10 @@ async def welfare_search_node(state: ShareState) -> dict:
 
     if not documents:
         logger.info("복지문화 정책 검색 결과 없음")
-        return {"welfare_knowledge_base": "", "welfare_policies": []}
+        return {
+            "domain_knowledge": {"welfare": ""},
+            "domain_policies": {"welfare": []},
+        }
 
     policies = [_pick_policy_fields(doc.metadata) for doc, _ in documents]
 
@@ -63,4 +66,7 @@ async def welfare_search_node(state: ShareState) -> dict:
     knowledge = "\n".join(lines)
 
     logger.info("복지문화 정책 검색 완료 — %d건", len(policies))
-    return {"welfare_knowledge_base": knowledge, "welfare_policies": policies}
+    return {
+        "domain_knowledge": {"welfare": knowledge},
+        "domain_policies": {"welfare": policies},
+    }

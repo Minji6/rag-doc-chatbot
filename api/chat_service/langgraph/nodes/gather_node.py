@@ -5,7 +5,6 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..state import DomainResult, ShareState
-from ..constants import CATEGORY_RESULT_FIELD
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +28,12 @@ _INTRO_SYSTEM_PROMPT = (
 
 
 def _collect_active_results(state: ShareState) -> list[DomainResult]:
-    """state에서 활성화된 (텍스트가 채워진) DomainResult들만 수집."""
-    active: list[DomainResult] = []
-    for field_name in CATEGORY_RESULT_FIELD.values():
-        result = state.get(field_name)
-        if not result:
-            continue
-        if result.get("text") and result.get("source") != "none":
-            active.append(result)
-    return active
+    """state.domain_results에서 텍스트가 있고 source != "none"인 결과만 수집."""
+    domain_results = state.get("domain_results") or {}
+    return [
+        r for r in domain_results.values()
+        if r.get("text") and r.get("source") != "none"
+    ]
 
 
 async def _build_multi_domain_intro(categories: list[str]) -> str:

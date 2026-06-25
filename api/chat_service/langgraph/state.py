@@ -22,30 +22,35 @@ def empty_domain_result(category: str = "") -> DomainResult:
     return DomainResult(text="", policies=[], category=category, source="none")
 
 
+def _merge_dict(left: dict | None, right: dict | None) -> dict:
+    """LangGraph reducer: 두 dict를 얕게 머지.
+
+    같은 키가 오면 right(나중에 들어온 쪽)가 이김.
+    fan-out 시 도메인별 키만 들어오므로 충돌은 정상 동작에선 일어나지 않음.
+    None/빈 값에 안전.
+    """
+    if not left:
+        return dict(right) if right else {}
+    if not right:
+        return dict(left)
+    return {**left, **right}
+
+
 class ShareState(TypedDict):
     messages: Annotated[list, add_messages]   # 필수 — 대화 누적
 
-    user_inquiry: str      # 사용자 원본 질문 (지침서 §18-1 표준)
+    user_inquiry: str      # 사용자 원본 질문
     user_role: str         # "guest" 또는 "user" (로그인 여부)
     user_profile: dict     # 로그인 유저 프로필 (guest일 경우 빈 dict)
 
     category: list[str]    # 분야 리스트: ["주거", "일자리", ...] — 멀티 분야 라우팅용
-    inquiry_type: str      # 의도: 검색 / 추천 / 상세조회 / 비교 (constants.py 참고)
+    inquiry_type: str      # 의도: 검색 / 추천 / 상세조회 / 비교
 
-    # 검색 노드 → 생성 노드 핸드오프 채널 (도메인별로 분리 — fan-out 시 동시 쓰기 충돌 방지)
-    housing_knowledge_base: str
-    housing_policies: list[dict]
-    employment_knowledge_base: str
-    employment_policies: list[dict]
-    education_knowledge_base: str
-    education_policies: list[dict]
-    welfare_knowledge_base: str
-    welfare_policies: list[dict]
-
-    housing_result: DomainResult        # 주거 에이전트 답변
-    employment_result: DomainResult     # 취업 에이전트 답변
-    education_result: DomainResult      # 교육 에이전트 답변
-    welfare_result: DomainResult        # 복지 에이전트 답변
+    # 검색·생성 핸드오프 + 결과 채널 — 도메인 이름(housing/employment/education/welfare)을 키로 가진 dict.
+    # fan-out 시 각 도메인이 자기 키에만 쓰고, _merge_dict reducer가 자동 머지한다.
+    domain_knowledge: Annotated[dict[str, str], _merge_dict]        # search_node → domain_node 핸드오프
+    domain_policies: Annotated[dict[str, list[dict]], _merge_dict]  # raw 정책 메타 (gather 후처리용)
+    domain_results: Annotated[dict[str, DomainResult], _merge_dict] # 도메인별 최종 결과
 
     suggestions: list[str]     # 교육 에이전트가 생성한 follow-up 질문 (PoC)
     final_response: str        # gather_node가 채우는 최종 답변
