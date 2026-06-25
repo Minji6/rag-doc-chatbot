@@ -77,7 +77,7 @@ async def education_search_node(state: ShareState) -> dict:
     - user: _SIMILARITY_THRESHOLD_USER — 관련성 있는 정책 위주
 
     - domain_knowledge["education"]: 생성 노드가 답변 근거로 읽을 정책 텍스트
-    - domain_policies["education"]: gather 후처리(비교/점수)용 raw 정책 메타
+    - domain_policies["education"]: composer 후처리(비교/점수)용 raw 정책 메타
     """
     inquiry = state["user_inquiry"]
     inquiry_type = state.get("inquiry_type", "검색")
