@@ -23,6 +23,7 @@ async def education_node(state: ShareState) -> dict:
     text = await agent.run(
         inquiry=state["user_inquiry"],
         knowledge=knowledge,
+        policies=policies,
         user_profile=state.get("user_profile"),
         inquiry_type=state.get("inquiry_type", "검색"),
     )
