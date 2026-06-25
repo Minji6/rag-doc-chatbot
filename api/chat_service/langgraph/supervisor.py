@@ -17,6 +17,7 @@ from .nodes.welfare_search_node import welfare_search_node
 from .nodes.welfare_node import welfare_node
 from .nodes.route_node_fun import route_node_fun
 from .nodes.gather_node import gather_node
+from .nodes.image_analysis_node import image_analysis_node
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class ChatbotSupervisor:
         graph = StateGraph(ShareState)
 
         # 노드 등록
+        graph.add_node("image_analysis", image_analysis_node)
         graph.add_node("analysis", analysis_node)
         graph.add_node("employment_search", employment_search_node)
         graph.add_node("employment", employment_node)
@@ -40,8 +42,9 @@ class ChatbotSupervisor:
         graph.add_node("gather", gather_node)
         graph.add_node("housing_search", housing_search_node)  # 주거: 검색 노드
         graph.add_node("housing", housing_node)                # 주거: 생성 노드
-        # 시작 → 의도 분석
-        graph.add_edge(START, "analysis")
+        # 시작 → 이미지 분석 → 의도 분석 (이미지 없으면 image_analysis_node가 즉시 통과)
+        graph.add_edge(START, "image_analysis")
+        graph.add_edge("image_analysis", "analysis")
 
         # 분석 결과(category list)에 따라 1개 또는 N개의 검색 노드로 fan-out.
         # route_node_fun이 list[str]을 반환하면 LangGraph가 자동으로 병렬 실행한다.
@@ -78,6 +81,8 @@ class ChatbotSupervisor:
         user_role: str = "guest",
         user_profile: dict | None = None,
         messages: list | None = None, # 이전 대화 맥락 (없으면 첫 대화)
+        image_base64: str | None = None,
+        image_content_type: str | None = None,
     ) -> dict:
         """챗봇 워크플로우 실행 후 프론트엔드 UI 분기에 필요한 메타까지 함께 반환.
 
@@ -101,6 +106,9 @@ class ChatbotSupervisor:
             domain_knowledge={},
             domain_policies={},
             domain_results={},
+            image_base64=image_base64,
+            image_content_type=image_content_type,
+            image_context="",
             suggestions=[],
             final_response="",
         )

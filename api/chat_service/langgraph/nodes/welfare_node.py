@@ -14,8 +14,13 @@ async def welfare_node(state: ShareState) -> dict:
     """
     logger.info("복지문화 정책 생성 노드 실행")
 
+    inquiry = state["user_inquiry"]
+    image_context = state.get("image_context", "")
+    if image_context:
+        inquiry = f"{inquiry}\n\n[첨부 이미지 내용]\n{image_context}"
+
     text, policies, source, merged_profile = await agent.run(
-        inquiry=state["user_inquiry"],
+        inquiry=inquiry,
         knowledge=state.get("domain_knowledge", {}).get("welfare", ""),
         policies=state.get("domain_policies", {}).get("welfare", []),
         user_role=state.get("user_role", "guest"),

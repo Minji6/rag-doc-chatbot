@@ -56,9 +56,15 @@ async def analysis_node(state: ShareState) -> dict:
     profile = state["user_profile"]
     logger.info("의도 분석 노드 실행 — user_role=%s, user_profile=%s",
                 state["user_role"], f"user_id={profile['user_id']}" if profile else "없음")
+
+    user_content = state["user_inquiry"]
+    image_context = state.get("image_context", "")
+    if image_context:
+        user_content = f"{user_content}\n\n[첨부 이미지 내용]\n{image_context}"
+
     analysis = cast(InquiryAnalysis, await _structured_model.ainvoke([
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": state["user_inquiry"]},
+        {"role": "user", "content": user_content},
     ]))
     # LLM이 빈 리스트를 반환하는 케이스 방어 — 라우팅 fallback이 받아 처리
     categories = analysis.category or []
