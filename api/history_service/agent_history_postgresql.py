@@ -5,7 +5,6 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from api.common.psycopg_pool_conf import psycopg_pool
-from api.common.utils import LoggingCallbackHandler
 
 # 로거 생성
 logger = logging.getLogger(__name__)
@@ -42,21 +41,9 @@ class HistoryPostgreSQLAgent:
 
         # 비동기 초기화 완료 설정
         self._initialized = True
-
-    # 에이전트 실행 메소드
-    async def run(self, message:str, thread_id:str) -> str:
-        # 비동기 초기화 메소드 호출
-        await self._initialize()
-
-        # LLM 요청하고 응답받기
-        result = await self.agent.ainvoke( #type: ignore
-            {"messages": [{"role":"user", "content":message}]},
-            {"configurable": {"thread_id": thread_id},
-             "callbacks": [LoggingCallbackHandler()]}
-        )
-
-        # AI 메시지 추출 반환
-        return result["messages"][-1].content
+        # 주: 이 에이전트의 LLM은 추론에 쓰이지 않는다. checkpointer(AsyncPostgresSaver)를
+        #     thread_id 기준으로 읽고/쓰는 저장소 용도로만 사용한다.
+        #     (대화 답변 생성은 supervisor가 담당 — 여기서 LLM 호출 없음)
 
     # 대화 히스토리 조회
     async def get_history(self, thread_id:str) -> dict:

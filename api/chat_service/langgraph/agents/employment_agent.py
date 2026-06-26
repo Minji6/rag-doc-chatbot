@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
-from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE
+from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,8 @@ class EmploymentAgent:
         )
 
     async def run(
-        self, inquiry: str, knowledge: str, user_profile: dict | None = None
+        self, inquiry: str, knowledge: str, user_profile: dict | None = None,
+        inquiry_type: str = "검색"
     ) -> str:
         """검색된 정책(knowledge)으로 답변을 생성한다. (검색은 하지 않음)
 
@@ -56,6 +57,7 @@ class EmploymentAgent:
             inquiry: 사용자 질문
             knowledge: employment_search_node가 검색한 정책 텍스트
             user_profile: 로그인 유저 프로필 (guest면 None/빈 dict)
+            inquiry_type: 질문 의도. "비교"면 표 대신 짧은 정성 코멘트만 생성.
         Returns:
             str: 생성된 사용자용 답변 텍스트
         """
@@ -66,6 +68,13 @@ class EmploymentAgent:
         )
         if user_profile:
             prompt += f"\n[사용자 정보]\n{user_profile}\n"
+
+        # 비교 모드: 정형 표는 composer 담당. 에이전트는 분야 관점 코멘트만.
+        if inquiry_type == "비교":
+            prompt += COMPARISON_COMMENT_GUIDE
+        # 상세조회: 특정 정책 1개 깊이 안내.
+        elif inquiry_type == "상세조회":
+            prompt += OUTPUT_DETAIL_GUIDE
 
         result = await self.agent.ainvoke(
             {"messages": [{"role": "user", "content": prompt}]}

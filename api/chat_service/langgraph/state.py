@@ -56,5 +56,9 @@ class ShareState(TypedDict):
     image_content_type: str | None # 이미지 MIME 타입 (예: "image/jpeg")
     image_context: str             # image_analysis_node가 추출한 이미지 정보 (없으면 빈 문자열)
 
+    # 후속질문 처리(대화 기억) — contextualize_node가 채운다.
+    last_policies: list[dict]      # 직전 턴이 사용자에게 보여준 정책 메타 (controller가 thread별로 캐리)
+    resolved_policies: list[dict]  # 후속질문이 가리키는 직전 정책 부분집합 ("두번째"/"공공근로" 등 해소 결과)
+
     suggestions: list[str]     # 교육 에이전트가 생성한 follow-up 질문 (PoC)
     final_response: str        # composer_node가 채우는 최종 답변

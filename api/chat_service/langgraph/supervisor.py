@@ -18,6 +18,8 @@ from .nodes.welfare_node import welfare_node
 from .nodes.route_node_fun import route_node_fun
 from .nodes.composer_node import composer_node
 from .nodes.image_analysis_node import image_analysis_node
+from .nodes.contextualize_node import contextualize_node
+from api.chat_service.policy_memory import get_last_policies, save_last_policies
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ class ChatbotSupervisor:
 
         # 노드 등록
         graph.add_node("image_analysis", image_analysis_node)
+        graph.add_node("contextualize", contextualize_node)  # 후속질문 → 독립형 질의 재작성 + 참조 해소
         graph.add_node("analysis", analysis_node)
         graph.add_node("employment_search", employment_search_node)
         graph.add_node("employment", employment_node)
@@ -42,9 +45,11 @@ class ChatbotSupervisor:
         graph.add_node("composer", composer_node)                  # 조립: fragment → 최종 답변
         graph.add_node("housing_search", housing_search_node)  # 주거: 검색 노드
         graph.add_node("housing", housing_node)                # 주거: 생성 노드
-        # 시작 → 이미지 분석 → 의도 분석 (이미지 없으면 image_analysis_node가 즉시 통과)
+        # 시작 → 이미지 분석 → 맥락화 → 의도 분석
+        # (이미지 없으면 image_analysis 즉시 통과 / 첫 턴이면 contextualize도 LLM 없이 통과)
         graph.add_edge(START, "image_analysis")
-        graph.add_edge("image_analysis", "analysis")
+        graph.add_edge("image_analysis", "contextualize")
+        graph.add_edge("contextualize", "analysis")
 
         # 분석 결과(category list)에 따라 1개 또는 N개의 검색 노드로 fan-out.
         # route_node_fun이 list[str]을 반환하면 LangGraph가 자동으로 병렬 실행한다.
@@ -83,6 +88,7 @@ class ChatbotSupervisor:
         messages: list | None = None, # 이전 대화 맥락 (없으면 첫 대화)
         image_base64: str | None = None,
         image_content_type: str | None = None,
+        thread_id: str | None = None,  # 후속질문 정책 메모리 조회/저장 키 (없으면 메모리 미사용)
     ) -> dict:
         """챗봇 워크플로우 실행 후 프론트엔드 UI 분기에 필요한 메타까지 함께 반환.
 
@@ -96,6 +102,9 @@ class ChatbotSupervisor:
             }
         """
         user_profile = user_profile or {}
+        # 직전 턴 정책 메모리 조회 — 후속질문("두번째 정책"/"A와 B 비교") 해소용.
+        # 메모리 생명주기(조회→주입→저장)를 supervisor가 관리해 컨트롤러는 위임만 한다.
+        last_policies = get_last_policies(thread_id) if thread_id else []
         initial_state = ShareState(
             messages=messages or [],
             user_inquiry=user_inquiry,
@@ -109,16 +118,28 @@ class ChatbotSupervisor:
             image_base64=image_base64,
             image_content_type=image_content_type,
             image_context="",
+            last_policies=last_policies,
+            resolved_policies=[],
             suggestions=[],
             final_response="",
         )
         final_state = await self.workflow.ainvoke(initial_state)
 
-        # 활성 도메인의 raw 정책 메타를 한 리스트로 합쳐서 노출.
-        # reducer 패턴 덕에 domain_results.values() 순회만으로 활성 결과를 다 가져옴.
-        policies: list[dict] = []
-        for result in final_state.get("domain_results", {}).values():
-            policies.extend(result.get("policies", []))
+        # 응답 policies는 "답변이 다루는 정책"을 반영한다.
+        # - 후속질문이 직전 정책을 특정했으면(resolved_policies) 그 정책만 노출
+        #   → "두번째 정책 알려줘"에 5개가 딸려오던 문제 해결.
+        # - 그 외에는 활성 도메인의 검색 결과를 합쳐서 노출 (검색·추천·비교).
+        resolved = final_state.get("resolved_policies") or []
+        if resolved:
+            policies = resolved
+        else:
+            policies = []
+            for result in final_state.get("domain_results", {}).values():
+                policies.extend(result.get("policies", []))
+
+        # 이번 턴이 보여준 정책을 다음 후속질문 해소용으로 저장 (빈 결과면 내부에서 클리어).
+        if thread_id:
+            save_last_policies(thread_id, policies)
 
         return {
             "message": final_state["final_response"],

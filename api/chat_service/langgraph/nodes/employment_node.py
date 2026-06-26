@@ -29,6 +29,7 @@ async def employment_node(state: ShareState) -> dict:
         inquiry=inquiry,
         knowledge=knowledge,
         user_profile=state.get("user_profile"),
+        inquiry_type=state.get("inquiry_type", "검색"),
     )
 
     source = "rag" if policies else "none"

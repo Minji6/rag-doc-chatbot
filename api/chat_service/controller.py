@@ -60,6 +60,7 @@ async def chat(
     history = await agent.get_history(thread_id)
     logger.info(f"[{thread_id}] 이전 대화 {len(history['messages'])}개 로드")
 
+    # 직전 정책 메모리(후속질문 해소용)의 생명주기는 supervisor가 thread_id로 직접 관리한다.
     result = await supervisor.run(
         user_inquiry=message,
         user_role=role,
@@ -67,6 +68,7 @@ async def chat(
         messages=history["messages"],
         image_base64=image_base64,
         image_content_type=image_content_type,
+        thread_id=thread_id,
     )
 
     # 새 대화 저장 - LLM에 재호출 없이 checkpointer에 직접 저장 (저장은 message 본문만)

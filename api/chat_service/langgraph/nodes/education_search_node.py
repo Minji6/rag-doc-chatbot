@@ -1,34 +1,17 @@
 import logging
-from langchain_postgres import PGVector
-from langchain.embeddings import init_embeddings
-from api.common.sqlalchemy_conf import engine
 from ..state import ShareState
+from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
 from ..constants import (
     AGENT_CATEGORY,
-    PGVECTOR_COLLECTION_NAME,
-    POLICY_METADATA_FIELDS,
     ROLE_GUEST,
     EDUCATION_SIMILARITY_THRESHOLD_USER,
     EDUCATION_SIMILARITY_THRESHOLD_GUEST,
+    resolve_search_k,
 )
 
 logger = logging.getLogger(__name__)
 
 _CATEGORY = AGENT_CATEGORY["education"]
-
-# 모듈 싱글톤 — 매 검색마다 재생성하지 않도록 import 시점에 1회만 생성.
-# (기존 구조는 search 호출마다 PGVector/임베딩 객체를 새로 만들어 낭비였음)
-_vectorstore = PGVector(
-    embeddings=init_embeddings("openai:text-embedding-3-large"),
-    collection_name=PGVECTOR_COLLECTION_NAME,
-    connection=engine,
-    async_mode=True,
-)
-
-
-def _pick_policy_fields(metadata: dict) -> dict:
-    """PGVector 메타에서 화이트리스트 필드만 추려 dict 생성."""
-    return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
 
 
 def _build_profile_query(inquiry: str, user_profile: dict) -> str:
@@ -86,15 +69,13 @@ async def education_search_node(state: ShareState) -> dict:
 
     threshold = EDUCATION_SIMILARITY_THRESHOLD_GUEST if user_role == ROLE_GUEST else EDUCATION_SIMILARITY_THRESHOLD_USER
 
+    # 검색 정책 수(k)는 4개 도메인 공통(resolve_search_k). 교육은 추천 시 프로필을
+    # 쿼리에 보강하는 전략만 별도로 유지한다.
+    k = resolve_search_k(inquiry_type)
     if inquiry_type == "추천" and user_profile:
         query = _build_profile_query(inquiry, user_profile)
-        k = 5
-    elif inquiry_type == "상세조회":
+    else:  # 검색, 상세조회, 비교
         query = inquiry
-        k = 2
-    else:  # 검색, 비교
-        query = inquiry
-        k = 5
 
     logger.info("교육 정책 검색 노드 실행 — inquiry_type=%s, user_role=%s, query=%s",
                 inquiry_type, user_role, query[:40])

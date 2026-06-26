@@ -25,6 +25,7 @@ async def welfare_node(state: ShareState) -> dict:
         policies=state.get("domain_policies", {}).get("welfare", []),
         user_role=state.get("user_role", "guest"),
         user_profile=state.get("user_profile"),
+        inquiry_type=state.get("inquiry_type", "검색"),
     )
     result = DomainResult(text=text, policies=policies, category=_CATEGORY, source=source)
     return {"domain_results": {"welfare": result}, "user_profile": merged_profile}

@@ -1,6 +1,5 @@
 import json
 import logging
-from datetime import date
 from typing import Annotated, Literal
 from fastapi import Depends
 from langchain.agents import create_agent
@@ -8,7 +7,9 @@ from langchain.tools import tool
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain.chat_models import init_chat_model
-from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE
+from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
+from ..tools.dday import calculate_dday
+from ..tools.age import calc_age as _calc_age
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +29,7 @@ def _strip_code_fence(text: str) -> str:
     return text.strip()
 
 
-def _calc_age(birth_date_str: str) -> int | None:
-    try:
-        bd = date.fromisoformat(birth_date_str)
-        today = date.today()
-        return today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
-    except (ValueError, TypeError):
-        return None
+# _calc_age 는 공통 유틸로 분리됨 → from ..tools.age import calc_age as _calc_age (상단)
 
 
 
@@ -279,34 +274,7 @@ def check_eligibility(user_profile: dict, policy_metadata: dict) -> str:
     return "\n".join(lines)
 
 
-@tool
-def calculate_dday(deadline: str, apply_period_type: str) -> str:
-    """
-    정책 신청 마감일까지 남은 일수를 계산합니다.
-    사용자가 마감일을 물을 때 호출하세요.
-
-    Args:
-        deadline: 신청 마감일 (YYYYMMDD 형식, 없으면 빈 문자열)
-        apply_period_type: 신청기간 구분 ("특정기간" / "상시" / "마감")
-    Returns:
-        str: D-day 문자열 (예: "D-30", "상시접수", "마감")
-    """
-    logger.info("calculate_dday 실행: deadline=%s", deadline)
-    if apply_period_type == "상시":
-        return "상시접수"
-    if not deadline:
-        return "마감"
-    today = date.today()
-    try:
-        deadline_date = date(int(deadline[:4]), int(deadline[4:6]), int(deadline[6:8]))
-    except (ValueError, IndexError):
-        return "마감"
-    diff = (deadline_date - today).days
-    if diff < 0:
-        return "마감"
-    if diff == 0:
-        return "오늘 마감"
-    return f"D-{diff}"
+# calculate_dday 는 공통 툴로 분리됨 → from ..tools.dday import calculate_dday (상단)
 
 
 async def _search_web(query: str, exclude_titles: list[str], count: int) -> str:
@@ -411,13 +379,19 @@ class WelfareAgent:
         policies: list[dict] | None = None,
         user_role: str = "guest",
         user_profile: dict | None = None,
+        inquiry_type: str = "검색",
     ) -> tuple[str, list[dict], Literal["rag", "web", "none"], dict]:
         user_profile = user_profile or {}
         policies = policies or []
         web_searched = False
 
+        # 웹 보완 임계값. 상세조회는 특정 정책 1개에 집중하므로(검색 k도 작음),
+        # RAG가 1건이라도 있으면 보완하지 않는다(불필요한 웹 패딩 방지).
+        # 그 외(검색·추천·비교)는 기존대로 5건 미만이면 웹으로 보완.
+        min_rag = 1 if inquiry_type == "상세조회" else _MIN_RAG_COUNT
+
         if not knowledge and not policies:
-            # RAG 완전 실패 — 웹 검색으로 대체
+            # RAG 완전 실패 — 웹 검색으로 대체 (상세조회도 0건이면 웹에서 그 정책을 찾는다)
             logger.info("RAG 결과 없음 — 웹 검색으로 대체")
             web_result = await _search_web(inquiry, [], 5)
             if web_result:
@@ -425,11 +399,11 @@ class WelfareAgent:
                 policies = await _normalize_web_policies(web_result)
                 web_searched = True
 
-        elif len(policies) < _MIN_RAG_COUNT:
+        elif len(policies) < min_rag:
             # RAG 부족 — 웹으로 보완 (RAG 결과는 앞에 유지)
             logger.info("RAG 결과 부족(%d건) — 웹 검색으로 보완", len(policies))
             existing_titles = [p.get("plcyNm", "") for p in policies]
-            web_result = await _search_web(inquiry, existing_titles, _MIN_RAG_COUNT - len(policies))
+            web_result = await _search_web(inquiry, existing_titles, min_rag - len(policies))
             if web_result:
                 knowledge += f"\n\n[웹 검색 보완]\n{web_result}"
                 logger.info("웹 보완 완료")
@@ -468,6 +442,13 @@ class WelfareAgent:
                 f"{json.dumps(rag_policies, ensure_ascii=False, indent=2)}\n"
                 "자격 확인·마감일 도구 호출 시 위 데이터를 사용하세요."
             )
+
+        # 비교 모드: 정형 표는 composer 담당. 에이전트는 복지 관점 코멘트만.
+        if inquiry_type == "비교":
+            prompt += COMPARISON_COMMENT_GUIDE
+        # 상세조회: 특정 정책 1개 깊이 안내.
+        elif inquiry_type == "상세조회":
+            prompt += OUTPUT_DETAIL_GUIDE
 
         result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
         text = str(result["messages"][-1].content)

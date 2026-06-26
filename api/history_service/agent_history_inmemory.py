@@ -5,8 +5,6 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
-from api.common.utils import LoggingCallbackHandler
-
 # 로거 생성
 logger = logging.getLogger(__name__)
 
@@ -25,17 +23,10 @@ class HistoryInMemoryAgent:
             model,
             checkpointer=in_memory_saver
         )
-    
-    # 에이전트 실행 메소드    
-    async def run(self, message:str, thread_id: str) -> str:
-        result = await self.agent.ainvoke(
-            {"messages":[{"role":"user", "content":message}]},
-            {"configurable": {"thread_id": thread_id},
-             "callbacks": [LoggingCallbackHandler()]}
-        )
-        
-        return result["messages"][-1].content
-    
+        # 주: 이 에이전트의 LLM은 추론에 쓰이지 않는다. checkpointer(InMemorySaver)를
+        #     thread_id 기준으로 읽고/쓰는 저장소 용도로만 사용한다.
+        #     (대화 답변 생성은 supervisor가 담당 — 여기서 LLM 호출 없음)
+
     # 대화 히스토리 조회
     async def get_history(self, thread_id:str) -> dict:
         # 현재 에이전트 상태 가져오기
