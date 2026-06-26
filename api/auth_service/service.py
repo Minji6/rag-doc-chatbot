@@ -23,7 +23,7 @@ class UserService:
         if not user:
             return None
         logger.info("유저 프로필 조회 완료 — user_id=%s, nickname=%s", user.user_id, user.nickname)
-        return UserResponse.model_validate(user).model_dump()
+        return UserResponse.model_validate(user).model_dump(mode="json")
 
     async def create_user(self, session: AsyncSession, req: UserCreateRequest) -> dict:
         user = User(**req.model_dump())
