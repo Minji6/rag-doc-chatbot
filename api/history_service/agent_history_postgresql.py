@@ -113,5 +113,6 @@ class HistoryPostgreSQLAgent:
         )
 
 
+
 # 의존성 주입을 위한 타입 힌트 정의
 HistoryPostgreSQLAgentDep = Annotated[HistoryPostgreSQLAgent, Depends(HistoryPostgreSQLAgent)]

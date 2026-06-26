@@ -5,6 +5,8 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from api.history_service.agent_dependency import HistoryAgentByQueryDep, build_thread_id
+from api.auth_service.service import UserServiceDep
+from api.common.sqlalchemy_conf import OrmSessionDep
 
 
 # 로거 생성
@@ -25,7 +27,6 @@ async def get_history(
 ):
     thread_id = build_thread_id(role, conversation_id, user_id)
     result = await agent.get_history(thread_id)
-    # 응답의 식별자를 원래 conversation_id로 되돌림 (합성 키 비노출)
     result["conversation_id"] = conversation_id
     return result
 
@@ -41,6 +42,17 @@ async def clear_history(
 ):
     thread_id = build_thread_id(role, conversation_id, user_id)
     result = await agent.clear_history(thread_id)
-    # 응답의 식별자를 원래 conversation_id로 되돌림 (합성 키 비노출)
     result["conversation_id"] = conversation_id
     return result
+
+# -----------------------------------------------------
+# 유저별 대화 목록 조회 (user 전용)
+# TODO: user_id 파라미터가 실제 요청자 본인인지 검증하는 인증 미들웨어 필요
+# -----------------------------------------------------
+@router.get("/conversations", response_class=JSONResponse)
+async def get_conversations(
+    user_id: Annotated[str, Query(description="유저 ID")],
+    service: UserServiceDep,
+    session: OrmSessionDep,
+):
+    return await service.get_conversations(user_id, session)

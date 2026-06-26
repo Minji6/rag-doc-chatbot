@@ -6,8 +6,8 @@ from psycopg_pool import AsyncConnectionPool
 ###############################################################
 psycopg_pool = AsyncConnectionPool(
     os.getenv("DATABASE_URL"), # type: ignore
-    min_size=1,
-    max_size=2,
+    min_size=2,
+    max_size=5,
     max_idle=300,           # 5분 이상 유휴 연결은 자동 회수 후 재생성
     reconnect_timeout=30,   # 재연결 실패 시 30초까지 재시도
     kwargs={"autocommit": True},
