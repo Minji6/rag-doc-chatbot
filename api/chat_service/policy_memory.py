@@ -8,19 +8,27 @@
 회원(Postgres) 영속화는 후속 과제(별도 테이블). 단일 워커 개발/시연 환경에는 충분.
 """
 import logging
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
-# thread_id → 직전 턴 정책 메타 리스트
-_store: dict[str, list[dict]] = {}
+# thread_id → 직전 턴 정책 메타 리스트 (LRU). 최근 접근 thread를 끝으로 보낸다.
+_store: "OrderedDict[str, list[dict]]" = OrderedDict()
 
 # thread별 보관 정책 수 상한 (직전 턴 결과만 필요하므로 작게)
 _MAX_POLICIES = 20
+# 보관할 thread 수 상한 — 초과 시 가장 오래 안 쓴 thread부터 제거(LRU).
+# 인메모리 구현이라 무한 증가를 막기 위한 임시 안전장치(Postgres 영속화 전까지).
+_MAX_THREADS = 500
 
 
 def get_last_policies(thread_id: str) -> list[dict]:
-    """thread의 직전 턴 정책 메타를 반환 (없으면 빈 리스트)."""
-    return _store.get(thread_id, [])
+    """thread의 직전 턴 정책 메타를 반환 (없으면 빈 리스트). 접근 시 LRU 갱신."""
+    policies = _store.get(thread_id)
+    if policies is None:
+        return []
+    _store.move_to_end(thread_id)  # 최근 사용 표시
+    return policies
 
 
 def save_last_policies(thread_id: str, policies: list[dict]) -> None:
@@ -29,6 +37,11 @@ def save_last_policies(thread_id: str, policies: list[dict]) -> None:
         _store.pop(thread_id, None)
         return
     _store[thread_id] = policies[:_MAX_POLICIES]
+    _store.move_to_end(thread_id)
+    # 상한 초과 시 가장 오래된 thread부터 제거
+    while len(_store) > _MAX_THREADS:
+        evicted, _ = _store.popitem(last=False)
+        logger.info("정책 메모리 상한 초과 — 오래된 thread 제거: %s", evicted)
     logger.info("[%s] 직전 정책 메모리 저장 — %d건", thread_id, len(_store[thread_id]))
 
 

@@ -6,6 +6,7 @@ from ..constants import (
     ROLE_GUEST,
     EDUCATION_SIMILARITY_THRESHOLD_USER,
     EDUCATION_SIMILARITY_THRESHOLD_GUEST,
+    resolve_search_k,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,15 +69,13 @@ async def education_search_node(state: ShareState) -> dict:
 
     threshold = EDUCATION_SIMILARITY_THRESHOLD_GUEST if user_role == ROLE_GUEST else EDUCATION_SIMILARITY_THRESHOLD_USER
 
+    # 검색 정책 수(k)는 4개 도메인 공통(resolve_search_k). 교육은 추천 시 프로필을
+    # 쿼리에 보강하는 전략만 별도로 유지한다.
+    k = resolve_search_k(inquiry_type)
     if inquiry_type == "추천" and user_profile:
         query = _build_profile_query(inquiry, user_profile)
-        k = 5
-    elif inquiry_type == "상세조회":
+    else:  # 검색, 상세조회, 비교
         query = inquiry
-        k = 2
-    else:  # 검색, 비교
-        query = inquiry
-        k = 5
 
     logger.info("교육 정책 검색 노드 실행 — inquiry_type=%s, user_role=%s, query=%s",
                 inquiry_type, user_role, query[:40])

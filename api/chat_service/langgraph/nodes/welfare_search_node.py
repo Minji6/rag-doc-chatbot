@@ -1,10 +1,7 @@
 import logging
 from ..state import ShareState
-from ..constants import AGENT_CATEGORY, resolve_search_k
+from ..constants import AGENT_CATEGORY, WELFARE_SIMILARITY_THRESHOLD, resolve_search_k
 from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
-
-# 복지문화 도메인 전용 임계값 — 실측 거리값 기반 (공통 0.4보다 완화)
-_SIMILARITY_THRESHOLD = 0.85
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +25,7 @@ async def welfare_search_node(state: ShareState) -> dict:
         query, k=k, filter={"category": _CATEGORY}
     )
     documents = [
-        (doc, dist) for doc, dist in results if dist <= _SIMILARITY_THRESHOLD
+        (doc, dist) for doc, dist in results if dist <= WELFARE_SIMILARITY_THRESHOLD
     ]
 
     if not documents:

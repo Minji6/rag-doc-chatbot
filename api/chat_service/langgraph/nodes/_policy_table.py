@@ -89,7 +89,8 @@ def build_comparison_table(policies: list[dict]) -> str:
     summary = _build_summary(rows)
     parts = [table, "", summary]
     if truncated:
-        parts.append(f"\n> 관련 정책이 많아 상위 {_MAX_ROWS}개만 표로 비교했습니다.")
+        parts.append("")
+        parts.append(f"> 관련 정책이 많아 상위 {_MAX_ROWS}개만 표로 비교했습니다.")
     return "\n".join(parts).rstrip() + "\n"
 
 

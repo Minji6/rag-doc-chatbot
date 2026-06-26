@@ -9,7 +9,6 @@ from api.chat_service.langgraph.constants import ROLE_USER, ROLE_GUEST
 from api.auth_service.service import UserServiceDep
 from api.common.sqlalchemy_conf import OrmSessionDep
 from api.history_service.agent_dependency import HistoryAgentByFormDep, build_thread_id
-from api.chat_service.policy_memory import get_last_policies, save_last_policies
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -61,9 +60,7 @@ async def chat(
     history = await agent.get_history(thread_id)
     logger.info(f"[{thread_id}] 이전 대화 {len(history['messages'])}개 로드")
 
-    # 직전 턴 정책 메모리 로드 (후속질문 "두번째 정책"/"공공근로와 비교" 해소용)
-    last_policies = get_last_policies(thread_id)
-
+    # 직전 정책 메모리(후속질문 해소용)의 생명주기는 supervisor가 thread_id로 직접 관리한다.
     result = await supervisor.run(
         user_inquiry=message,
         user_role=role,
@@ -71,13 +68,11 @@ async def chat(
         messages=history["messages"],
         image_base64=image_base64,
         image_content_type=image_content_type,
-        last_policies=last_policies,
+        thread_id=thread_id,
     )
 
     # 새 대화 저장 - LLM에 재호출 없이 checkpointer에 직접 저장 (저장은 message 본문만)
     await agent.save_exchange(message, result["message"], thread_id)
-    # 이번 턴이 보여준 정책을 다음 후속질문 해소용으로 캐리
-    save_last_policies(thread_id, result.get("policies", []))
     logger.info(f"[{thread_id}] 대화 저장 완료")
 
     return JSONResponse(content={

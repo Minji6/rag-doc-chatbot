@@ -107,6 +107,8 @@ async def contextualize_node(state: ShareState) -> dict:
     original = state["user_inquiry"]
 
     # 첫 턴 — 맥락이 없으면 LLM 없이 통과 (토큰 절약).
+    # resolved_policies는 매 턴 여기서 새로 세팅된다(초기 state는 supervisor가 []로 시드).
+    # → 주제를 바꾼 새 질문엔 [](아래 LLM이 referenced_indices=[] 반환)로 덮여 스테일 라우팅이 없다.
     if not messages and not last_policies:
         return {"resolved_policies": []}
 
@@ -122,6 +124,8 @@ async def contextualize_node(state: ShareState) -> dict:
             {"role": "user", "content": user_content},
         ]))
     except Exception:
+        # 실패 시 user_inquiry를 반환에 넣지 않음 → state의 원문 질의가 그대로 유지(LangGraph 부분 업데이트).
+        # resolved_policies만 []로 비워 직전 참조가 라우팅에 새지 않게 한다.
         logger.exception("맥락화 실패 — 원문 질의로 폴백")
         return {"resolved_policies": []}
 

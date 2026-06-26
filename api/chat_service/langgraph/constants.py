@@ -14,25 +14,35 @@ CATEGORY_ROUTING = {
 # PGVector 정책 컬렉션명 — 도메인 에이전트 4개가 공유
 PGVECTOR_COLLECTION_NAME = "youth_policy_all"
 
-# 유사도 거리 임계값 (text-embedding-3-large 기준, 지침서 §22-6)
-SIMILARITY_DISTANCE_THRESHOLD = 0.4
+# 유사도 거리 임계값 (text-embedding-3-large 기준)
+SIMILARITY_DISTANCE_THRESHOLD = 0.85
 
 # 교육 도메인 전용 임계값 — 실측 거리값 기반 (공통 0.4보다 완화)
 EDUCATION_SIMILARITY_THRESHOLD_USER = 0.7   # 로그인 유저: 관련성 있는 정책 위주
 EDUCATION_SIMILARITY_THRESHOLD_GUEST = 0.9  # 게스트: 정확도보다 결과 제공 우선
 
+# 복지문화 도메인 전용 임계값 — 실측 거리값 기반 (공통 0.4보다 완화)
+WELFARE_SIMILARITY_THRESHOLD = 0.85
+
+# 취업 도메인 전용 임계값 — 실측 거리값 기반 (공통 0.4보다 완화)
+EMPLOYMENT_SIMILARITY_THRESHOLD = 0.85
+
 # analysis_node 분류 실패/예외 시 기본 분야 (현재 라우팅은 전 분야 fan-out으로 대체되어 미사용)
 DEFAULT_CATEGORY = "주거"
 
-# inquiry_type별 검색 정책 수(k). 상세조회는 특정 정책 한 개에 집중하므로 적게 가져온다.
-# (education_search는 자체적으로 동일 전략을 쓰고 있어, 주거·취업·복지 노드를 여기에 맞춘다)
+# inquiry_type별 검색 정책 수(k) — 4개 도메인(주거·취업·교육·복지) 공통.
+# 상세조회는 특정 정책 한 개에 집중하므로 적게, 그 외(검색·추천·비교)는 기본값.
 DETAIL_SEARCH_K = 2   # 상세조회: 가장 유사한 정책 위주
 DEFAULT_SEARCH_K = 5  # 검색·추천·비교 기본
 
+# 취업은 만료(마감) 정책을 걸러내므로 후보를 k배만큼 더 가져온 뒤 살아남은 것 중 k개만 사용한다.
+# → 필터링에도 출력 정책 수는 다른 도메인과 동일(k)하게 유지.
+EMPLOYMENT_SEARCH_OVERSAMPLE = 2
 
-def resolve_search_k(inquiry_type: str, default: int = DEFAULT_SEARCH_K) -> int:
-    """inquiry_type에 맞는 검색 정책 수를 반환. 상세조회면 좁히고, 그 외는 default."""
-    return DETAIL_SEARCH_K if inquiry_type == "상세조회" else default
+
+def resolve_search_k(inquiry_type: str) -> int:
+    """inquiry_type에 맞는 검색 정책 수(4개 도메인 공통). 상세조회면 좁히고 그 외는 기본값."""
+    return DETAIL_SEARCH_K if inquiry_type == "상세조회" else DEFAULT_SEARCH_K
 
 # 각 도메인 에이전트가 PGVector 검색 시 filter로 사용할 category 값
 # (에이전트 코드의 하드코딩을 제거하기 위해 중앙 관리)

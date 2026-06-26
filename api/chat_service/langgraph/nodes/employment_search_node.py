@@ -3,10 +3,7 @@ from datetime import date
 from ..state import ShareState
 from ..tools.dday import end_date_from
 from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
-from ..constants import AGENT_CATEGORY, resolve_search_k
-
-# 취업 도메인 전용 임계값 — 실측 거리값 기반 (공통 0.4보다 완화)
-_SIMILARITY_THRESHOLD = 0.85
+from ..constants import AGENT_CATEGORY, EMPLOYMENT_SIMILARITY_THRESHOLD, resolve_search_k, EMPLOYMENT_SEARCH_OVERSAMPLE
 
 logger = logging.getLogger(__name__)
 
@@ -47,18 +44,19 @@ async def employment_search_node(state: ShareState) -> dict:
     - domain_policies["employment"]: composer 후처리(비교/점수)용 raw 정책 메타
     """
     query = state["user_inquiry"]
-    # 취업은 만료 정책을 걸러내므로 recall 확보용으로 기본 k를 넉넉히(10) 가져온다.
-    # 상세조회만 좁혀(resolve_search_k) 특정 정책에 집중.
-    k = resolve_search_k(state.get("inquiry_type", "검색"), default=10)
-    logger.info("취업 정책 검색 노드 실행 — k=%d, query=%s", k, query[:30])
+    # 출력 정책 수(k)는 4개 도메인 공통(resolve_search_k). 단 취업은 만료 정책을 걸러내므로
+    # 후보를 k배(oversample)만큼 더 가져온 뒤, 살아남은 것 중 k개만 사용한다.
+    k = resolve_search_k(state.get("inquiry_type", "검색"))
+    fetch_k = k * EMPLOYMENT_SEARCH_OVERSAMPLE
+    logger.info("취업 정책 검색 노드 실행 — k=%d(후보 %d), query=%s", k, fetch_k, query[:30])
 
     results = await _vectorstore.asimilarity_search_with_score(
-        query, k=k, filter={"category": _CATEGORY}
+        query, k=fetch_k, filter={"category": _CATEGORY}
     )
 
     documents_with_dday: list[tuple] = []
     for doc, dist in results:
-        if dist > _SIMILARITY_THRESHOLD:
+        if dist > EMPLOYMENT_SIMILARITY_THRESHOLD:
             continue
         label = _dday_label(
             doc.metadata.get("aplyPrdSeCd", ""),
@@ -67,6 +65,8 @@ async def employment_search_node(state: ShareState) -> dict:
         if label is None:  # 마감 / 기간 만료
             continue
         documents_with_dday.append((doc, dist, label))
+
+    documents_with_dday = documents_with_dday[:k]  # 출력은 공통 k개로 제한
 
     if not documents_with_dday:
         logger.info("취업 정책 검색 결과 없음")

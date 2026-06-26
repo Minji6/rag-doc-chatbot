@@ -19,6 +19,7 @@ from .nodes.route_node_fun import route_node_fun
 from .nodes.composer_node import composer_node
 from .nodes.image_analysis_node import image_analysis_node
 from .nodes.contextualize_node import contextualize_node
+from api.chat_service.policy_memory import get_last_policies, save_last_policies
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class ChatbotSupervisor:
         messages: list | None = None, # 이전 대화 맥락 (없으면 첫 대화)
         image_base64: str | None = None,
         image_content_type: str | None = None,
-        last_policies: list[dict] | None = None,  # 직전 턴 정책 메타 (후속질문 해소용)
+        thread_id: str | None = None,  # 후속질문 정책 메모리 조회/저장 키 (없으면 메모리 미사용)
     ) -> dict:
         """챗봇 워크플로우 실행 후 프론트엔드 UI 분기에 필요한 메타까지 함께 반환.
 
@@ -101,6 +102,9 @@ class ChatbotSupervisor:
             }
         """
         user_profile = user_profile or {}
+        # 직전 턴 정책 메모리 조회 — 후속질문("두번째 정책"/"A와 B 비교") 해소용.
+        # 메모리 생명주기(조회→주입→저장)를 supervisor가 관리해 컨트롤러는 위임만 한다.
+        last_policies = get_last_policies(thread_id) if thread_id else []
         initial_state = ShareState(
             messages=messages or [],
             user_inquiry=user_inquiry,
@@ -114,7 +118,7 @@ class ChatbotSupervisor:
             image_base64=image_base64,
             image_content_type=image_content_type,
             image_context="",
-            last_policies=last_policies or [],
+            last_policies=last_policies,
             resolved_policies=[],
             suggestions=[],
             final_response="",
@@ -132,6 +136,10 @@ class ChatbotSupervisor:
             policies = []
             for result in final_state.get("domain_results", {}).values():
                 policies.extend(result.get("policies", []))
+
+        # 이번 턴이 보여준 정책을 다음 후속질문 해소용으로 저장 (빈 결과면 내부에서 클리어).
+        if thread_id:
+            save_last_policies(thread_id, policies)
 
         return {
             "message": final_state["final_response"],
