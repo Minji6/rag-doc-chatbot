@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from api.history_service.agent_dependency import HistoryAgentByQueryDep, build_thread_id
-from api.history_service.agent_history_postgresql import HistoryPostgreSQLAgentDep
+from api.auth_service.service import UserServiceDep
 from api.common.sqlalchemy_conf import OrmSessionDep
 
 
@@ -46,12 +46,13 @@ async def clear_history(
     return result
 
 # -----------------------------------------------------
-# 유저별 대화 목록 조회 (user 전용 — PostgreSQL 에이전트 직접 주입)
+# 유저별 대화 목록 조회 (user 전용)
+# TODO: user_id 파라미터가 실제 요청자 본인인지 검증하는 인증 미들웨어 필요
 # -----------------------------------------------------
 @router.get("/conversations", response_class=JSONResponse)
 async def get_conversations(
     user_id: Annotated[str, Query(description="유저 ID")],
-    agent: HistoryPostgreSQLAgentDep,
+    service: UserServiceDep,
     session: OrmSessionDep,
 ):
-    return await agent.get_conversations(user_id, session)
+    return await service.get_conversations(user_id, session)

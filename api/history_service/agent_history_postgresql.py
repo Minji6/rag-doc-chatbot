@@ -4,8 +4,6 @@ from fastapi import Depends
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 from api.common.psycopg_pool_conf import psycopg_pool
 from api.common.utils import LoggingCallbackHandler
 
@@ -114,23 +112,6 @@ class HistoryPostgreSQLAgent:
             as_node="model",
         )
 
-
-    # 유저별 대화 목록 조회 (SQLAlchemy 세션 사용 — psycopg_pool은 LangGraph 전용)
-    async def get_conversations(self, user_id: str, session: AsyncSession) -> list[dict]:
-        rows = await session.execute(
-            text("""
-                SELECT thread_id, MAX(checkpoint_id) AS latest_checkpoint
-                FROM checkpoints
-                WHERE thread_id LIKE :prefix
-                GROUP BY thread_id
-                ORDER BY latest_checkpoint DESC
-            """),
-            {"prefix": f"{user_id}:%"},
-        )
-        records = rows.fetchall()
-        prefix = f"{user_id}:"
-        self.logger.info("유저 %s 대화 목록 조회 — %d건", user_id, len(records))
-        return [{"conversation_id": row[0].removeprefix(prefix)} for row in records]
 
 
 # 의존성 주입을 위한 타입 힌트 정의

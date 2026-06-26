@@ -34,6 +34,22 @@ class UserService:
         return {"user_id": user.user_id, "nickname": user.nickname}
 
 
+    async def get_conversations(self, user_id: str, session: AsyncSession) -> list[dict]:
+        rows = await session.execute(
+            text("""
+                SELECT thread_id, MAX(checkpoint_id) AS latest_checkpoint
+                FROM checkpoints
+                WHERE thread_id LIKE :prefix
+                GROUP BY thread_id
+                ORDER BY latest_checkpoint DESC
+            """),
+            {"prefix": f"{user_id}:%"},
+        )
+        records = rows.fetchall()
+        prefix = f"{user_id}:"
+        logger.info("유저 %s 대화 목록 조회 — %d건", user_id, len(records))
+        return [{"conversation_id": row[0].removeprefix(prefix)} for row in records]
+
     async def delete_user(self, user_id: int, session: AsyncSession) -> dict | None:
         user = (await session.execute(select(User).where(User.user_id == user_id))).scalar_one_or_none()
         if not user:
