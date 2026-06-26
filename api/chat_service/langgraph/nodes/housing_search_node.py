@@ -1,25 +1,15 @@
-from datetime import date
 import logging
 from typing import Literal, TypedDict
-from langchain.embeddings import init_embeddings
-from langchain_postgres import PGVector
-from api.common.sqlalchemy_conf import engine
 from ..state import ShareState
-from ..constants import AGENT_CATEGORY, PGVECTOR_COLLECTION_NAME, POLICY_METADATA_FIELDS, SIMILARITY_DISTANCE_THRESHOLD
+from ..constants import AGENT_CATEGORY, SIMILARITY_DISTANCE_THRESHOLD, resolve_search_k
+from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
+from ..tools.age import calc_age as _calc_age
 
 # 로거 생성
 logger = logging.getLogger(__name__)
 
 # 카테고리 [주거]로 분류
 _CATEGORY = AGENT_CATEGORY["housing"]
-
-# 모듈 싱글톤 - import 시점에 1회만 생성
-_vectorstore = PGVector(
-    embeddings=init_embeddings("openai:text-embedding-3-large"),
-    collection_name=PGVECTOR_COLLECTION_NAME,
-    connection=engine,
-    async_mode=True
-)
 
 ##############################################################
 # 주거 자격 사전 진단
@@ -33,24 +23,7 @@ class EligibilityResult(TypedDict):
     verdict: Verdict
     reasons: list[str]    
 
-# 사용자의 만나이를 계산하는 함수
-def _calc_age(birth_date: str | None) -> int | None:
-    if not birth_date:
-        return None
-    try:
-        y, m, d = map(int, birth_date[:10].split("-"))
-        born = date(y, m, d)
-    except (ValueError, AttributeError):
-        return None
-    
-    # 오늘 날짜 기준으로 만나이 계산
-    today = date.today()
-    age = today.year - born.year
-    # 튜플 계산을 통해 월, 일을 순서대로 비교 (만약 생일이 지나지 않았으면 나이 -1)
-    if (today.month, today.day) < (born.month, born.day):
-        age -= 1
-    
-    return age
+# _calc_age 는 공통 유틸로 분리됨 → from ..tools.age import calc_age as _calc_age (상단)
 
 # 나이제한 검사
 def _check_age(meta: dict, age: int | None) -> tuple[Verdict, str] :
@@ -157,11 +130,7 @@ def _format_verdict_line(result: EligibilityResult) -> str:
     }[result["verdict"]]
     return f"{icon} — {' | '.join(result['reasons'])}"
 
-def _pick_policy_fields(metadata: dict) -> dict:
-    """
-    PGVector 메타에서 화이트리스트 필드만 추려 dict 생성
-    """
-    return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
+# _pick_policy_fields 는 공통 유틸로 분리됨 → from ..tools.policy_search import ... (상단)
 
 # ============================================
 # 서치 노드
@@ -174,10 +143,11 @@ async def housing_search_node(state: ShareState) -> dict:
     """
     query = state["user_inquiry"]
     user_profile = state.get("user_profile") or {}
-    logger.info("주거 정책 검색 노드 실행 - query=%s", query[:30])
-    
+    k = resolve_search_k(state.get("inquiry_type", "검색"))
+    logger.info("주거 정책 검색 노드 실행 - k=%d, query=%s", k, query[:30])
+
     results = await _vectorstore.asimilarity_search_with_score(
-        query, k=5, filter={"category": _CATEGORY}
+        query, k=k, filter={"category": _CATEGORY}
     )
     
     documents = [

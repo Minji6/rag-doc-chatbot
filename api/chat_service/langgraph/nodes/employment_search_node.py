@@ -1,15 +1,9 @@
 import logging
-import re
 from datetime import date
-from langchain_postgres import PGVector
-from langchain.embeddings import init_embeddings
-from api.common.sqlalchemy_conf import engine
 from ..state import ShareState
-from ..constants import (
-    AGENT_CATEGORY,
-    PGVECTOR_COLLECTION_NAME,
-    POLICY_METADATA_FIELDS,
-)
+from ..tools.dday import end_date_from
+from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
+from ..constants import AGENT_CATEGORY, resolve_search_k
 
 # 취업 도메인 전용 임계값 — 실측 거리값 기반 (공통 0.4보다 완화)
 _SIMILARITY_THRESHOLD = 0.85
@@ -17,19 +11,6 @@ _SIMILARITY_THRESHOLD = 0.85
 logger = logging.getLogger(__name__)
 
 _CATEGORY = AGENT_CATEGORY["employment"]
-
-# 모듈 싱글톤 — 매 검색마다 재생성하지 않도록 import 시점에 1회만 생성.
-_vectorstore = PGVector(
-    embeddings=init_embeddings("openai:text-embedding-3-large"),
-    collection_name=PGVECTOR_COLLECTION_NAME,
-    connection=engine,
-    async_mode=True,
-)
-
-
-def _pick_policy_fields(metadata: dict) -> dict:
-    """PGVector 메타에서 화이트리스트 필드만 추려 dict 생성."""
-    return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
 
 
 def _dday_label(aply_prd_se_cd: str, aply_ymd: str) -> str | None:
@@ -42,22 +23,11 @@ def _dday_label(aply_prd_se_cd: str, aply_ymd: str) -> str | None:
     if se == "상시":
         return "상시접수"
 
-    # 특정기간: aplyYmd에서 YYYY.MM.DD 또는 YYYYMMDD 형식 날짜를 파싱
-    ymd = (aply_ymd or "").strip()
-    if not ymd:
-        return ""  # 날짜 없음 → 라벨 없이 통과 (safe default)
+    # 특정기간: 공통 파서로 aplyYmd에서 마감일(끝 날짜)을 구한다.
+    end_date = end_date_from(apply_ymd=aply_ymd)
+    if end_date is None:
+        return ""  # 날짜 없음/파싱 실패 → 라벨 없이 통과 (safe default)
 
-    all_dates = []
-    for m in re.finditer(r"(\d{4})[.\-]?(\d{2})[.\-]?(\d{2})", ymd):
-        try:
-            all_dates.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
-        except ValueError:
-            pass
-
-    if not all_dates:
-        return ""  # 파싱 실패 → 라벨 없이 통과
-
-    end_date = max(all_dates)  # 기간 범위이면 마감일(끝 날짜) 사용
     delta = (end_date - date.today()).days
 
     if delta < 0:
@@ -77,10 +47,13 @@ async def employment_search_node(state: ShareState) -> dict:
     - domain_policies["employment"]: composer 후처리(비교/점수)용 raw 정책 메타
     """
     query = state["user_inquiry"]
-    logger.info("취업 정책 검색 노드 실행 — query=%s", query[:30])
+    # 취업은 만료 정책을 걸러내므로 recall 확보용으로 기본 k를 넉넉히(10) 가져온다.
+    # 상세조회만 좁혀(resolve_search_k) 특정 정책에 집중.
+    k = resolve_search_k(state.get("inquiry_type", "검색"), default=10)
+    logger.info("취업 정책 검색 노드 실행 — k=%d, query=%s", k, query[:30])
 
     results = await _vectorstore.asimilarity_search_with_score(
-        query, k=10, filter={"category": _CATEGORY}
+        query, k=k, filter={"category": _CATEGORY}
     )
 
     documents_with_dday: list[tuple] = []

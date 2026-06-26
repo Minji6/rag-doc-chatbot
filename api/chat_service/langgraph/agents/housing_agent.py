@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 
-from ..constants import OUTPUT_FORMAT_GUIDE
+from ..constants import OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
 
 logger = logging.getLogger(__name__)
 
@@ -57,20 +57,29 @@ class HousingAgent:
         )
 
     async def run(
-            self, inquiry: str, knowledge: str, user_profile: dict | None = None) -> str:
+            self, inquiry: str, knowledge: str, user_profile: dict | None = None,
+            inquiry_type: str = "검색") -> str:
 
         # ✅ 라벨이 붙은 정책 개수 카운트
         eligible_count = knowledge.count("✅ 자격 적합")
         ineligible_count = knowledge.count("❌ 자격 미충족")
-        
+
         prompt = (
             "다음 정보를 바탕으로 주거 정책 답변을 작성하세요. \n\n"
             f"[질문]\n{inquiry}\n\n"
             f"[정책정보]\n{knowledge or '(검색한 정책 없음)'}\n"
         )
-        
+
         if user_profile:
             prompt += f"\n[사용자 정보]\n{user_profile}\n"
+
+        # 비교 모드: 표는 composer가 그리므로 ### 블록 강제 지시 대신 짧은 정성 코멘트만 요청.
+        if inquiry_type == "비교":
+            prompt += COMPARISON_COMMENT_GUIDE
+            result = await self.agent.ainvoke(
+                {"messages": [{"role": "user", "content": prompt}]}
+            )
+            return result["messages"][-1].content
 
         # 강제 지시 (시스템 프롬프트보다 강력)
         if eligible_count > 0:
@@ -85,6 +94,10 @@ class HousingAgent:
                 f"❌ 자격 미충족 정책이 {ineligible_count}개 있습니다. "
                 f"【자격 미충족 안내】 섹션에 모두 나열하세요.\n"
             )
+
+        # 상세조회: 특정 정책 1개를 깊이 있게 안내하도록 유도.
+        if inquiry_type == "상세조회":
+            prompt += OUTPUT_DETAIL_GUIDE
 
         result = await self.agent.ainvoke(
             {"messages": [{"role": "user", "content": prompt}]}

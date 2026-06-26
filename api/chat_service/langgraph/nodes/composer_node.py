@@ -13,6 +13,7 @@ import logging
 import re
 
 from ..state import DomainResult, ShareState
+from ._policy_table import build_comparison_table
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +62,49 @@ def _build_intro(categories: list[str]) -> str:
     return f"{', '.join(categories)} 분야의 정책을 안내해 드릴게요."
 
 
+def _build_domain_comments(fragments: list[DomainResult]) -> str:
+    """비교 모드 — 각 도메인 에이전트가 만든 정성 코멘트를 분야별로 모은다 (하이브리드).
+
+    표(정형 데이터)는 composer가, 코멘트(분야 판단)는 에이전트가 책임진다.
+    혹시 에이전트가 표를 흘렸어도 "|"로 시작하는 표 줄은 안전망으로 제거한다.
+    """
+    lines: list[str] = []
+    for frag in fragments:
+        comment = _strip_boilerplate(frag.get("text", ""))
+        # 표 줄(| ... |)이 새어들어왔으면 제거 — 표는 위에서 이미 결정적으로 그렸음.
+        comment = "\n".join(
+            ln for ln in comment.splitlines() if not ln.lstrip().startswith("|")
+        ).strip()
+        if comment:
+            lines.append(f"- **{frag.get('category', '')}**: {comment}")
+    if not lines:
+        return ""
+    return "**분야별 코멘트**\n" + "\n".join(lines)
+
+
+def _collect_policies_for_compare(fragments: list[DomainResult]) -> list[dict]:
+    """활성 도메인 결과에서 raw 정책 메타를 분야 순서대로 평탄화한다.
+
+    각 정책에 분야 라벨을 보강한다(메타에 category가 없을 때 도메인 결과 category로 채움).
+    """
+    policies: list[dict] = []
+    for frag in fragments:
+        domain_category = frag.get("category", "")
+        for policy in frag.get("policies", []):
+            if not policy:
+                continue
+            if not policy.get("category"):
+                policy = {**policy, "category": domain_category}
+            policies.append(policy)
+    return policies
+
+
 async def composer_node(state: ShareState) -> dict:
     """도메인 fragment를 모아 일관된 최종 답변으로 조립한다.
 
     분기:
     - 활성 결과 0개 → fallback (첫 턴이면 인사 포함)
+    - inquiry_type=="비교" & 정책 2개 이상 → 결정적 통합 비교 표 (분야 교차 가능)
     - 1개 → 분야 헤더 + 본문
     - N개 → 도입부 1줄 + 분야마다 헤더 + 본문
     인사 템플릿은 첫 대화(대화기록 없음)에서만 최상단에 1회 부착.
@@ -92,15 +131,37 @@ async def composer_node(state: ShareState) -> dict:
         parts.append(_GREETING_TEMPLATE)
         parts.append("")
 
-    if len(fragments) > 1:
-        parts.append(_build_intro([f["category"] for f in fragments]))
-        parts.append("")
+    # 비교 의도 → 분야 fragment를 쌓는 대신 raw 정책 메타로 통합 비교 표를 결정적으로 조립.
+    # (주거+일자리처럼 분야가 섞여도 하나의 표로 나란히 비교. 정책 2개 미만이면 일반 분기로 폴백.)
+    comparison_table = ""
+    if state.get("inquiry_type") == "비교":
+        # 후속질문이 직전 정책을 지정했으면(resolved_policies) 검색 결과 대신 '그 정책들'로 표를 만든다.
+        # → "공공근로와 미래일자리 비교"가 유사도 top-k가 아니라 정확히 지정 2개만 비교됨.
+        resolved = state.get("resolved_policies") or []
+        compare_policies = resolved if len(resolved) >= 2 else _collect_policies_for_compare(fragments)
+        comparison_table = build_comparison_table(compare_policies)
 
-    for frag in fragments:
-        parts.append(f"## {frag['category']}")
+    if comparison_table:
+        categories = [f["category"] for f in fragments]
+        parts.append(f"{', '.join(categories)} 분야 정책을 비교해 드릴게요." if len(categories) > 1
+                     else f"{categories[0]} 정책을 비교해 드릴게요.")
         parts.append("")
-        parts.append(_strip_boilerplate(frag["text"]))
-        parts.append("")
+        parts.append(comparison_table)
+        # 하이브리드: 결정적 표 아래에 각 도메인 에이전트의 정성 코멘트 배치.
+        domain_comments = _build_domain_comments(fragments)
+        if domain_comments:
+            parts.append("")
+            parts.append(domain_comments)
+    else:
+        if len(fragments) > 1:
+            parts.append(_build_intro([f["category"] for f in fragments]))
+            parts.append("")
+
+        for frag in fragments:
+            parts.append(f"## {frag['category']}")
+            parts.append("")
+            parts.append(_strip_boilerplate(frag["text"]))
+            parts.append("")
 
     final_response = "\n".join(parts).rstrip() + "\n"
     return {"final_response": final_response, "suggestions": suggestions}

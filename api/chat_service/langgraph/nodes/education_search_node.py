@@ -1,12 +1,8 @@
 import logging
-from langchain_postgres import PGVector
-from langchain.embeddings import init_embeddings
-from api.common.sqlalchemy_conf import engine
 from ..state import ShareState
+from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
 from ..constants import (
     AGENT_CATEGORY,
-    PGVECTOR_COLLECTION_NAME,
-    POLICY_METADATA_FIELDS,
     ROLE_GUEST,
     EDUCATION_SIMILARITY_THRESHOLD_USER,
     EDUCATION_SIMILARITY_THRESHOLD_GUEST,
@@ -15,20 +11,6 @@ from ..constants import (
 logger = logging.getLogger(__name__)
 
 _CATEGORY = AGENT_CATEGORY["education"]
-
-# 모듈 싱글톤 — 매 검색마다 재생성하지 않도록 import 시점에 1회만 생성.
-# (기존 구조는 search 호출마다 PGVector/임베딩 객체를 새로 만들어 낭비였음)
-_vectorstore = PGVector(
-    embeddings=init_embeddings("openai:text-embedding-3-large"),
-    collection_name=PGVECTOR_COLLECTION_NAME,
-    connection=engine,
-    async_mode=True,
-)
-
-
-def _pick_policy_fields(metadata: dict) -> dict:
-    """PGVector 메타에서 화이트리스트 필드만 추려 dict 생성."""
-    return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
 
 
 def _build_profile_query(inquiry: str, user_profile: dict) -> str:

@@ -66,7 +66,22 @@ async def analysis_node(state: ShareState) -> dict:
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]))
-    # LLM이 빈 리스트를 반환하는 케이스 방어 — 라우팅 fallback이 받아 처리
-    categories = analysis.category or []
+
+    # 후속질문이 직전 정책을 특정했으면(resolved_policies) 분야를 그 정책들의 분야로 확정한다.
+    # → "두번째 정책 자세히"의 재작성 질의에 '근로자' 같은 단어가 섞여 LLM이 엉뚱한 분야를
+    #   추가 분류하는 것을 차단(라우팅이 지정 정책의 분야로만 가도록). 의도(inquiry_type)는 그대로 사용.
+    resolved = state.get("resolved_policies") or []
+    if resolved:
+        seen: list[str] = []
+        for p in resolved:
+            c = (p.get("category") or "").strip()
+            if c and c not in seen:
+                seen.append(c)
+        categories = seen or (analysis.category or [])
+        logger.info("resolved_policies로 분야 확정 — category=%s", categories)
+    else:
+        # LLM이 빈 리스트를 반환하는 케이스 방어 — 라우팅 fallback이 받아 처리
+        categories = analysis.category or []
+
     logger.info("분류 결과 — category=%s, inquiry_type=%s", categories, analysis.inquiry_type)
     return {"category": categories, "inquiry_type": analysis.inquiry_type}

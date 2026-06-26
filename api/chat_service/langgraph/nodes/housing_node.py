@@ -24,7 +24,8 @@ async def housing_node(state: ShareState) -> dict:
     text = await agent.run(
         inquiry=inquiry,
         knowledge=knowledge,
-        user_profile=state.get("user_profile")
+        user_profile=state.get("user_profile"),
+        inquiry_type=state.get("inquiry_type", "검색"),
     )
     
     source = "rag" if policies else "none"
