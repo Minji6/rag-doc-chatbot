@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from api.chat_service.langgraph.supervisor import ChatbotSupervisorDep
-from api.chat_service.langgraph.constants import ROLE_USER, ROLE_GUEST
+from api.chat_service.langgraph.constants import ROLE_USER
 from api.auth_service.service import UserServiceDep
 from api.common.sqlalchemy_conf import OrmSessionDep
 from api.history_service.agent_dependency import HistoryAgentByFormDep, build_thread_id
@@ -28,9 +28,8 @@ async def chat(
     user_id: Annotated[int | None, Form()] = None,
     attach: Annotated[UploadFile | None, File()] = None,
 ):
-    if role not in (ROLE_USER, ROLE_GUEST):
-        raise HTTPException(status_code=422, detail=f"role은 '{ROLE_USER}' 또는 '{ROLE_GUEST}'여야 합니다.")
-
+    # role 값 검증(user/guest)은 의존성(HistoryAgentByFormDep, role: Literal)에서 먼저 수행되므로
+    # 여기서는 별도 체크 없이 진입한다.
     logger.info(f"[{conversation_id}] 메시지 수신: {message[:30]}...")
 
     user_profile = None # guest면 None

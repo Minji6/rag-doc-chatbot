@@ -3,6 +3,7 @@ from datetime import date
 from ..state import ShareState
 from ..tools.dday import end_date_from
 from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
+from ..tools.eligibility import check_policy_eligibility, format_verdict_line, eligibility_sort_key
 from ..constants import AGENT_CATEGORY, EMPLOYMENT_SIMILARITY_THRESHOLD, resolve_search_k, EMPLOYMENT_SEARCH_OVERSAMPLE
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ async def employment_search_node(state: ShareState) -> dict:
     - domain_policies["employment"]: composer 후처리(비교/점수)용 raw 정책 메타
     """
     query = state["user_inquiry"]
+    user_profile = state.get("user_profile") or {}
     # 출력 정책 수(k)는 4개 도메인 공통(resolve_search_k). 단 취업은 만료 정책을 걸러내므로
     # 후보를 k배(oversample)만큼 더 가져온 뒤, 살아남은 것 중 k개만 사용한다.
     k = resolve_search_k(state.get("inquiry_type", "검색"))
@@ -66,6 +68,9 @@ async def employment_search_node(state: ShareState) -> dict:
             continue
         documents_with_dday.append((doc, dist, label))
 
+    # 자격 진단 기준으로 정렬: eligible → unknown → ineligible (게스트는 검색 순서 유지)
+    documents_with_dday.sort(key=lambda item: eligibility_sort_key(item[0].metadata, user_profile))
+
     documents_with_dday = documents_with_dday[:k]  # 출력은 공통 k개로 제한
 
     if not documents_with_dday:
@@ -83,6 +88,12 @@ async def employment_search_node(state: ShareState) -> dict:
         lines.append(f"내용: {doc.page_content}")
         if dday:
             lines.append(f"신청기간: {dday}")
+
+        # 자격 진단 라벨 (로그인 유저만, 게스트는 None 반환되어 스킵)
+        eligibility = check_policy_eligibility(doc.metadata, user_profile)
+        if eligibility is not None:
+            lines.append(format_verdict_line(eligibility))
+
         lines.append(f"신청 URL: {doc.metadata.get('aplyUrlAddr', '정보 없음')}\n")
     knowledge = "\n".join(lines)
 
