@@ -16,6 +16,8 @@ engine = create_async_engine(
     pool_size=5,
     max_overflow=10,
     pool_pre_ping=True,
+    pool_recycle=300,    # 5분마다 커넥션 교체 - DB auto-suspend 주기와 맞춤
+    pool_timeout=10,     # 커넥션 획득 대기 최대 10초
     echo=False
 )
 
