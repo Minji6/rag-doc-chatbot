@@ -70,8 +70,11 @@ async def chat(
         thread_id=thread_id,
     )
 
-    # 새 대화 저장 - LLM에 재호출 없이 checkpointer에 직접 저장 (저장은 message 본문만)
-    await agent.save_exchange(message, result["message"], thread_id)
+    # 새 대화 저장 - LLM에 재호출 없이 checkpointer에 직접 저장.
+    # full_message는 의도 정형 전 전체 답변 — 상세조회처럼 응답 message를 비워도
+    # 대화 맥락(후속질문 해소)은 보존되도록 히스토리엔 전체 답변을 저장한다.
+    history_message = result.pop("full_message", "") or result["message"]
+    await agent.save_exchange(message, history_message, thread_id)
     logger.info(f"[{thread_id}] 대화 저장 완료")
 
     return JSONResponse(content={

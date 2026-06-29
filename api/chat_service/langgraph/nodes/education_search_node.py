@@ -64,7 +64,7 @@ async def education_search_node(state: ShareState) -> dict:
     - domain_policies["education"]: composer 후처리(비교/점수)용 raw 정책 메타
     """
     inquiry = state["user_inquiry"]
-    inquiry_type = state.get("inquiry_type", "검색")
+    inquiry_types = state.get("inquiry_type", [])
     user_role = state.get("user_role", ROLE_GUEST)
     user_profile = state.get("user_profile") or {}
 
@@ -72,14 +72,14 @@ async def education_search_node(state: ShareState) -> dict:
 
     # 검색 정책 수(k)는 4개 도메인 공통(resolve_search_k). 교육은 추천 시 프로필을
     # 쿼리에 보강하는 전략만 별도로 유지한다.
-    k = resolve_search_k(inquiry_type)
-    if inquiry_type == "추천" and user_profile:
+    k = resolve_search_k(inquiry_types, state.get("requested_count"))
+    if "추천" in inquiry_types and user_profile:
         query = _build_profile_query(inquiry, user_profile)
     else:  # 검색, 상세조회, 비교
         query = inquiry
 
     logger.info("교육 정책 검색 노드 실행 — inquiry_type=%s, user_role=%s, query=%s",
-                inquiry_type, user_role, query[:40])
+                inquiry_types, user_role, query[:40])
 
     results = await _vectorstore.asimilarity_search_with_score(
         query, k=k, filter={"category": _CATEGORY}

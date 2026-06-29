@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 from langchain.tools import tool
-from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE
+from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE
 from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
 logger = logging.getLogger(__name__)
@@ -319,10 +319,17 @@ class EducationAgent:
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
         self.logger = logging.getLogger(f"{__name__}.EducationAgent")
         # inquiry_type별 agent를 초기화 시점에 미리 생성 (요청마다 생성하지 않음)
-        # 모든 프롬프트 끝에 OUTPUT_FORMAT_GUIDE를 붙여 분야간 출력 형식을 통일.
+        # 일반 모드는 OUTPUT_FORMAT_GUIDE(### 정책 블록 형식)로 통일하되,
+        # '비교' 모드만은 COMPARISON_COMMENT_GUIDE(코멘트만)를 붙인다.
+        # → OUTPUT_FORMAT_GUIDE의 "곧바로 ### 정책명 블록부터" 지시가 비교 코멘트 지시를
+        #   덮어써 교육 코멘트에 ### 정책 블록이 새던 문제를 차단.
         self._agents = {
             inquiry_type: create_agent(
-                model=model, tools=_TOOLS, system_prompt=prompt + OUTPUT_FORMAT_GUIDE
+                model=model,
+                tools=_TOOLS,
+                system_prompt=prompt + (
+                    COMPARISON_COMMENT_GUIDE if inquiry_type == "비교" else OUTPUT_FORMAT_GUIDE
+                ),
             )
             for inquiry_type, prompt in _SYSTEM_PROMPTS.items()
         }

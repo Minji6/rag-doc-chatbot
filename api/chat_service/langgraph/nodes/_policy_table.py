@@ -26,9 +26,6 @@ _COLUMNS: tuple[tuple[str, str | None, int], ...] = (
     ("신청 URL", "aplyUrlAddr", 60),
 )
 
-# 표가 과도하게 길어지지 않도록 비교 정책 수 상한. 초과분은 표 아래 안내.
-_MAX_ROWS = 8
-
 _EMPTY = "정보 없음"
 
 
@@ -53,8 +50,20 @@ def _cell(value, limit: int) -> str:
     return text
 
 
-def _resolve(policy: dict, key: str | None) -> str:
-    """컬럼 키 → 셀 원본 값. 계산 컬럼(_dday/_apply_period)은 파생."""
+def policy_key(policy: dict) -> str:
+    """정책 식별 키 — 셀 오버라이드(요약) 매핑용. plcyNo 우선, 없으면 plcyNm."""
+    return str(policy.get("plcyNo") or policy.get("plcyNm") or "")
+
+
+def _resolve(policy: dict, key: str | None, overrides: dict | None) -> str:
+    """컬럼 키 → 셀 원본 값. 계산 컬럼(_dday/_apply_period)은 파생.
+
+    overrides[정책키][컬럼키]가 있으면 그 값(LLM 요약 등)을 우선 사용한다.
+    """
+    if overrides:
+        ov = overrides.get(policy_key(policy)) or {}
+        if key in ov and ov[key]:
+            return str(ov[key])
     if key == "_dday":
         return dday_label(
             policy.get("aplyPrdSeCd", ""),
@@ -66,31 +75,29 @@ def _resolve(policy: dict, key: str | None) -> str:
     return policy.get(key, "")  # type: ignore[arg-type]
 
 
-def build_comparison_table(policies: list[dict]) -> str:
+def build_comparison_table(policies: list[dict], cell_overrides: dict | None = None) -> str:
     """raw 정책 메타 리스트로 마크다운 비교 표 + 결정적 요약을 만든다.
 
     정책이 2개 미만이면 빈 문자열을 반환한다(비교 불가 — 호출부가 일반 분기로 폴백).
+
+    cell_overrides: {정책키(policy_key): {컬럼키: 표시값}} — 긴 셀(지원 내용/대상)을
+    호출부가 LLM으로 요약해 넘기면 그 값을 셀에 쓴다. None이면 원문을 길이 제한해 자른다.
     """
     rows = [p for p in policies if p and p.get("plcyNm")]
     if len(rows) < 2:
         return ""
 
-    truncated = len(rows) > _MAX_ROWS
-    rows = rows[:_MAX_ROWS]
-
+    # 행 수 상한 없음 — 검색 단계에서 요청 개수(requested_count)/k로 이미 제한된다.
     header = "| " + " | ".join(h for h, _, _ in _COLUMNS) + " |"
     sep = "| " + " | ".join("---" for _ in _COLUMNS) + " |"
     lines = [header, sep]
     for policy in rows:
-        cells = [_cell(_resolve(policy, key), limit) for _, key, limit in _COLUMNS]
+        cells = [_cell(_resolve(policy, key, cell_overrides), limit) for _, key, limit in _COLUMNS]
         lines.append("| " + " | ".join(cells) + " |")
 
     table = "\n".join(lines)
     summary = _build_summary(rows)
     parts = [table, "", summary]
-    if truncated:
-        parts.append("")
-        parts.append(f"> 관련 정책이 많아 상위 {_MAX_ROWS}개만 표로 비교했습니다.")
     return "\n".join(parts).rstrip() + "\n"
 
 

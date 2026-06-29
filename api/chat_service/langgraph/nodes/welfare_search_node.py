@@ -18,7 +18,7 @@ async def welfare_search_node(state: ShareState) -> dict:
     - welfare_policies: composer 후처리(비교/점수)용 raw 정책 메타
     """
     query = state["user_inquiry"]
-    k = resolve_search_k(state.get("inquiry_type", "검색"))
+    k = resolve_search_k(state.get("inquiry_type", []), state.get("requested_count"))
     logger.info("복지문화 정책 검색 노드 실행 — k=%d, query=%s", k, query[:30])
 
     results = await _vectorstore.asimilarity_search_with_score(

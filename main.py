@@ -1,4 +1,13 @@
 # ============================================
+# Windows에서 psycopg async가 요구하는 SelectorEventLoop 설정
+# (ProactorEventLoop 기본값과 충돌하므로 가장 먼저 설정)
+# ============================================
+import asyncio
+import sys
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# ============================================
 # 환경 변수 로드 (가장 먼저 실행되어야 함)
 # ============================================
 from dotenv import load_dotenv

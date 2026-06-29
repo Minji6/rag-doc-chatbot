@@ -1,5 +1,6 @@
 import logging
 from ..state import ShareState, DomainResult
+from ..constants import agent_mode
 from ..agents.welfare_agent import WelfareAgent, _CATEGORY
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ async def welfare_node(state: ShareState) -> dict:
         policies=state.get("domain_policies", {}).get("welfare", []),
         user_role=state.get("user_role", "guest"),
         user_profile=state.get("user_profile"),
-        inquiry_type=state.get("inquiry_type", "검색"),
+        inquiry_type=agent_mode(state.get("inquiry_type", [])),
     )
     result = DomainResult(text=text, policies=policies, category=_CATEGORY, source=source)
     return {

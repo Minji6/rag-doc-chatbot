@@ -40,9 +40,34 @@ DEFAULT_SEARCH_K = 5  # 검색·추천·비교 기본
 EMPLOYMENT_SEARCH_OVERSAMPLE = 2
 
 
-def resolve_search_k(inquiry_type: str) -> int:
-    """inquiry_type에 맞는 검색 정책 수(4개 도메인 공통). 상세조회면 좁히고 그 외는 기본값."""
-    return DETAIL_SEARCH_K if inquiry_type == "상세조회" else DEFAULT_SEARCH_K
+def resolve_search_k(inquiry_types: list[str] | str, requested_count: int | None = None) -> int:
+    """검색 정책 수(k)를 정한다 (4개 도메인 공통).
+
+    우선순위:
+    1) 사용자가 개수를 명시했으면(requested_count 양수) 그 값을 그대로 사용 — 상한 없음.
+       ("정책 3개만 추천" → policies/비교 표 모두 정확히 3개)
+    2) 그 외엔 의도 기반: '상세조회'가 포함되면 좁히고(DETAIL_SEARCH_K), 아니면 기본값.
+
+    inquiry_types는 list가 정석이나, 단일 str도 받아 하위호환을 유지한다.
+    """
+    if requested_count and requested_count > 0:
+        return requested_count
+    types = [inquiry_types] if isinstance(inquiry_types, str) else (inquiry_types or [])
+    return DETAIL_SEARCH_K if "상세조회" in types else DEFAULT_SEARCH_K
+
+
+# 도메인 에이전트 프롬프트 분기는 비교/상세조회 모드뿐이라 단일 모드값이면 충분하다.
+# 멀티 의도(list)를 에이전트가 받을 단일 모드로 축약한다. 우선순위: 비교 > 상세조회 > 추천 > 검색.
+_AGENT_MODE_PRIORITY = ("비교", "상세조회", "추천", "검색")
+
+
+def agent_mode(inquiry_types: list[str] | str) -> str:
+    """멀티 의도 리스트를 도메인 에이전트에 넘길 단일 모드 문자열로 축약한다."""
+    types = [inquiry_types] if isinstance(inquiry_types, str) else (inquiry_types or [])
+    for mode in _AGENT_MODE_PRIORITY:
+        if mode in types:
+            return mode
+    return "검색"
 
 # 각 도메인 에이전트가 PGVector 검색 시 filter로 사용할 category 값
 # (에이전트 코드의 하드코딩을 제거하기 위해 중앙 관리)

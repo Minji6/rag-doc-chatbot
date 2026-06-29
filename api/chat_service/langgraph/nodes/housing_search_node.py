@@ -28,7 +28,7 @@ async def housing_search_node(state: ShareState) -> dict:
     """
     query = state["user_inquiry"]
     user_profile = state.get("user_profile") or {}
-    k = resolve_search_k(state.get("inquiry_type", "검색"))
+    k = resolve_search_k(state.get("inquiry_type", []), state.get("requested_count"))
     logger.info("주거 정책 검색 노드 실행 - k=%d, query=%s", k, query[:30])
 
     results = await _vectorstore.asimilarity_search_with_score(

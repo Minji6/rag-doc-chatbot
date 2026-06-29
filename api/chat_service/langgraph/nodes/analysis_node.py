@@ -10,19 +10,43 @@ logger = logging.getLogger(__name__)
 
 class InquiryAnalysis(BaseModel):
     """사용자 질문의 분야·의도 분류 결과 구조화 출력 스키마"""
+    is_general: Annotated[
+        bool,
+        Field(
+            description=(
+                "정책과 무관한 인사·잡담·일반 질문(예: '안녕', '오늘 날씨', '파이썬이 뭐야')이면 true, "
+                "청년정책(일자리·주거·교육·복지문화) 관련 질문이면 false. "
+                "true면 category와 inquiry_type은 빈 리스트로 둔다."
+            )
+        )
+    ]
     category: Annotated[
         list[str],
         Field(
             description=(
                 f"정책 분야 리스트. 다음 중에서만 선택: {', '.join(CATEGORIES)}. "
-                f"질문이 한 분야면 1개, 여러 분야에 걸치면 모두 나열."
+                f"질문이 한 분야면 1개, 여러 분야에 걸치면 모두 나열. is_general=true면 빈 리스트."
             )
         )
     ]
     inquiry_type: Annotated[
-        str,
-        Field(description=f"질문 의도. 다음 중 하나만 사용: {', '.join(INQUIRY_TYPES)}")
+        list[str],
+        Field(
+            description=(
+                f"질문 의도 리스트. 다음 중에서만 선택: {', '.join(INQUIRY_TYPES)}. "
+                f"보통 1개지만 '추천하고 비교해줘'처럼 둘 이상이면 모두 담는다. is_general=true면 빈 리스트."
+            )
+        )
     ]
+    requested_count: Annotated[
+        int | None,
+        Field(
+            description=(
+                "사용자가 명시적으로 요청한 정책 개수. '3개', '다섯 개', '세 가지'처럼 "
+                "수가 분명히 적힌 경우에만 정수로, 개수 언급이 없으면 null."
+            )
+        )
+    ] = None
 
 
 # 모듈 싱글톤 — 한 번만 생성 (지침서 22-2)
@@ -38,18 +62,28 @@ _SYSTEM_PROMPT = f"""당신은 청년정책 챗봇의 의도 분석기입니다.
 - 교육: 장학금·학자금·내일배움카드 등
 - 복지문화: 금융지원·문화예술·복지 등
 
+[일반대화 - is_general] 정책과 무관한 인사·잡담·일반 질문(예: "안녕", "고마워", "오늘 기분 어때", "파이썬이 뭐야")이면 true.
+청년정책 관련 질문이면 false. is_general=true면 category·inquiry_type은 빈 리스트로 둔다.
+
 분류 규칙:
 - 한 분야에 해당하면 그 분야만 리스트에 담아 반환 (예: ["주거"])
 - 여러 분야에 걸치면 해당하는 분야를 모두 리스트에 담아 반환 (예: ["주거", "일자리"])
 - 명확히 한 분야가 떠오르면 그 하나만 선택. 모호할 때만 복수 선택.
 
-[의도 - inquiry_type] {', '.join(INQUIRY_TYPES)} 중 하나
-- 검색: 특정 키워드로 정책을 찾고 싶어함
-- 추천: 본인 상황을 설명하며 맞는 정책을 추천받고 싶어함
-- 상세조회: 특정 정책의 세부 내용을 물어봄
-- 비교: 여러 정책을 비교해달라고 함
+[의도 - inquiry_type] {', '.join(INQUIRY_TYPES)} 중 하나 이상 (리스트). **기본값은 '검색'.**
+- 검색: 분야·키워드로 정책 목록을 찾고 싶어함. **대부분의 "~정책 알려줘 / 찾아줘 / 뭐 있어? / 같이 알려줘"는 검색이다.**
+  예: "청년 월세 지원 정책 알려줘", "주거랑 일자리 정책 같이 알려줘", "전세대출 뭐 있어?" → ["검색"]
+- 추천: 사용자가 **본인 상황·조건을 설명**하거나 "추천/맞는/적합한/받을만한"을 명시할 때만.
+  예: "사회초년생인데 받을만한 거 추천해줘", "내 소득에 맞는 정책" → ["추천"]
+- 상세조회: **특정 정책 1개를 고유 명칭으로 콕 집어** 그 정책의 세부(자격·금액·절차 등)를 물을 때만.
+  예: "청년도약계좌 자세히 알려줘", "행복주택 신청조건이 뭐야?" → ["상세조회"]
+  ※ 분야·키워드 수준의 "~정책 알려줘"는 상세조회가 아니라 **검색**이다.
+- 비교: 둘 이상 정책의 차이를 묻거나 "비교해줘".
+- "추천하고 비교해줘"처럼 둘 이상이면 모두 담는다 (예: ["추천", "비교"]).
 
-애매하면 가장 가까운 값으로 분류하세요."""
+[개수 - requested_count] "3개", "다섯 개"처럼 개수가 명시되면 정수로, 없으면 null.
+
+분야가 모호하면 가장 가까운 값으로 분류하되, 의도가 애매하면 '검색'을 택하세요."""
 
 
 async def analysis_node(state: ShareState) -> dict:
@@ -71,6 +105,8 @@ async def analysis_node(state: ShareState) -> dict:
     # → "두번째 정책 자세히"의 재작성 질의에 '근로자' 같은 단어가 섞여 LLM이 엉뚱한 분야를
     #   추가 분류하는 것을 차단(라우팅이 지정 정책의 분야로만 가도록). 의도(inquiry_type)는 그대로 사용.
     resolved = state.get("resolved_policies") or []
+    # 후속 정책질문(직전 정책 특정)은 일반대화가 아니라 정책 처리이므로 is_general 강제 해제.
+    is_general = bool(analysis.is_general) and not resolved
     if resolved:
         seen: list[str] = []
         for p in resolved:
@@ -83,5 +119,14 @@ async def analysis_node(state: ShareState) -> dict:
         # LLM이 빈 리스트를 반환하는 케이스 방어 — 라우팅 fallback이 받아 처리
         categories = analysis.category or []
 
-    logger.info("분류 결과 — category=%s, inquiry_type=%s", categories, analysis.inquiry_type)
-    return {"category": categories, "inquiry_type": analysis.inquiry_type}
+    inquiry_types = analysis.inquiry_type or []
+    logger.info(
+        "분류 결과 — is_general=%s, category=%s, inquiry_type=%s, requested_count=%s",
+        is_general, categories, inquiry_types, analysis.requested_count,
+    )
+    return {
+        "category": categories,
+        "inquiry_type": inquiry_types,
+        "is_general": is_general,
+        "requested_count": analysis.requested_count,
+    }
