@@ -4,6 +4,7 @@ from fastapi import Depends
 from langchain.agents import create_agent
 
 from ..constants import OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
+from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ class HousingAgent:
 
     async def run(
             self, inquiry: str, knowledge: str, user_profile: dict | None = None,
-            inquiry_type: str = "검색") -> str:
+            inquiry_type: str = "검색") -> tuple[str, list[str]]:
 
         # ✅ 라벨이 붙은 정책 개수 카운트
         eligible_count = knowledge.count("✅ 자격 적합")
@@ -76,10 +77,11 @@ class HousingAgent:
         # 비교 모드: 표는 composer가 그리므로 ### 블록 강제 지시 대신 짧은 정성 코멘트만 요청.
         if inquiry_type == "비교":
             prompt += COMPARISON_COMMENT_GUIDE
+            prompt += SUGGESTIONS_PROMPT
             result = await self.agent.ainvoke(
                 {"messages": [{"role": "user", "content": prompt}]}
             )
-            return result["messages"][-1].content
+            return parse_suggestions(result["messages"][-1].content)
 
         # 강제 지시 (시스템 프롬프트보다 강력)
         if eligible_count > 0:
@@ -99,11 +101,12 @@ class HousingAgent:
         if inquiry_type == "상세조회":
             prompt += OUTPUT_DETAIL_GUIDE
 
+        prompt += SUGGESTIONS_PROMPT
         result = await self.agent.ainvoke(
             {"messages": [{"role": "user", "content": prompt}]}
         )
 
-        return result["messages"][-1].content
+        return parse_suggestions(result["messages"][-1].content)
 
 
 HousingAgentDep = Annotated[HousingAgent, Depends(HousingAgent)]

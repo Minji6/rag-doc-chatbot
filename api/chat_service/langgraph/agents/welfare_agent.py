@@ -10,6 +10,7 @@ from langchain.chat_models import init_chat_model
 from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
 from ..tools.dday import calculate_dday
 from ..tools.age import calc_age as _calc_age
+from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
 logger = logging.getLogger(__name__)
 
@@ -380,7 +381,7 @@ class WelfareAgent:
         user_role: str = "guest",
         user_profile: dict | None = None,
         inquiry_type: str = "검색",
-    ) -> tuple[str, list[dict], Literal["rag", "web", "none"], dict]:
+    ) -> tuple[str, list[dict], Literal["rag", "web", "none"], dict, list[str]]:
         user_profile = user_profile or {}
         policies = policies or []
         web_searched = False
@@ -450,8 +451,9 @@ class WelfareAgent:
         elif inquiry_type == "상세조회":
             prompt += OUTPUT_DETAIL_GUIDE
 
+        prompt += SUGGESTIONS_PROMPT
         result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
-        text = str(result["messages"][-1].content)
+        text, suggestions = parse_suggestions(str(result["messages"][-1].content))
 
         if web_searched:
             source: Literal["rag", "web", "none"] = "web"
@@ -460,7 +462,7 @@ class WelfareAgent:
         else:
             source = "none"
 
-        return text, policies, source, user_profile
+        return text, policies, source, user_profile, suggestions
 
 
 WelfareAgentDep = Annotated[WelfareAgent, Depends(WelfareAgent)]
