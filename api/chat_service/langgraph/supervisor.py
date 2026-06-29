@@ -159,8 +159,15 @@ class ChatbotSupervisor:
             policies = resolved
         else:
             policies = []
+            seen: set[str] = set()
             for result in final_state.get("domain_results", {}).values():
-                policies.extend(result.get("policies", []))
+                for p in result.get("policies", []):
+                    plcy_no = p.get("plcyNo")
+                    if plcy_no and plcy_no in seen:
+                        continue
+                    if plcy_no:
+                        seen.add(plcy_no)
+                    policies.append(p)
 
         # 이번 턴이 보여준 정책을 다음 후속질문 해소용으로 저장 (빈 결과면 내부에서 클리어).
         # 저장은 정형 전 policies로 — 추천 단독이라 응답에선 비워도 후속질문("두번째 거")은 해소돼야 한다.
