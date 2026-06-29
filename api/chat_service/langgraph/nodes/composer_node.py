@@ -197,26 +197,34 @@ _COMMENTARY_SYSTEM_PROMPT = """당신은 청년정책 챗봇의 답변 편집자
 # ── 비교 표 셀 요약(LLM) ──────────────────────────────────────────────────────
 # 비교 표의 '지원 내용/대상' 원문은 매우 길어 말줄임표로 잘렸다. 표에 넣기 전에
 # 한 번의 배치 LLM 호출로 핵심만 짧은 문구로 요약한다(정책당 호출 X). 실패하면 원문 폴백.
+#
+# 구조화 출력(with_structured_output)을 쓴다 — 평문 JSON + json.loads는 모델이 값 안에
+# 따옴표를 안 이스케이프하면 깨져서(확률적 파싱 실패) 요약이 산발적으로 폴백됐다.
 
-_summary_model = init_chat_model("gpt-4o-mini", model_provider="openai", temperature=0)
+class _CellSummary(BaseModel):
+    """정책 1건의 비교 표 셀 요약."""
+    idx: Annotated[int, Field(description="입력 정책의 0-based 순번")]
+    support: Annotated[str, Field(description="'지원 내용' 요약 (25자 이내, 한 줄, 없으면 빈 문자열)")] = ""
+    target: Annotated[str, Field(description="'지원 대상' 요약 (25자 이내, 한 줄, 없으면 빈 문자열)")] = ""
+
+
+class _CellSummaries(BaseModel):
+    """비교 대상 정책들의 셀 요약 묶음."""
+    items: list[_CellSummary]
+
+
+_summary_model = init_chat_model(
+    "gpt-4o-mini", model_provider="openai", temperature=0
+).with_structured_output(_CellSummaries)
 
 _CELL_SUMMARY_SYSTEM_PROMPT = """당신은 청년정책 비교 표의 셀 요약기입니다.
 각 정책의 '지원 내용'과 '지원 대상'을 표에 들어갈 만큼 **짧고 핵심만** 요약하세요.
 
 규칙:
-- 각 항목 25자 이내, 한 줄(줄바꿈·표 기호 금지). 금액·기간 등 핵심 수치는 살리세요.
+- 각 항목 25자 이내, 한 줄. 금액·기간 등 핵심 수치는 살리세요.
 - 원문에 있는 사실만 쓰고 지어내지 마세요. 정보가 없으면 빈 문자열.
 - 행정 군더더기(사업 근거·법령 조항 등)는 빼고 실제 혜택/대상만 남기세요.
-- 반드시 JSON 배열만 반환: [{"idx": 0, "support": "...", "target": "..."}, ...]"""
-
-
-def _strip_code_fence(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    if text.endswith("```"):
-        text = text.rsplit("```", 1)[0]
-    return text.strip()
+- 입력으로 받은 모든 정책을 idx 그대로 매겨 빠짐없이 반환하세요."""
 
 
 async def _summarize_compare_cells(policies: list[dict]) -> dict[str, dict[str, str]]:
@@ -239,31 +247,25 @@ async def _summarize_compare_cells(policies: list[dict]) -> dict[str, dict[str, 
         })
 
     try:
-        result = await _summary_model.ainvoke([
+        result = cast(_CellSummaries, await _summary_model.ainvoke([
             SystemMessage(content=_CELL_SUMMARY_SYSTEM_PROMPT),
             HumanMessage(content=json.dumps(items, ensure_ascii=False)),
-        ])
-        parsed = json.loads(_strip_code_fence(str(result.content)))
-        if not isinstance(parsed, list):
-            raise ValueError("응답이 배열이 아님")
+        ]))
     except Exception:
         logger.exception("비교 표 셀 요약 실패 — 원문 폴백")
         return {}
 
     overrides: dict[str, dict[str, str]] = {}
-    for entry in parsed:
-        if not isinstance(entry, dict):
-            continue
-        idx = entry.get("idx")
-        if not isinstance(idx, int) or not (0 <= idx < len(rows)):
+    for entry in result.items:
+        if not (0 <= entry.idx < len(rows)):
             continue
         cell: dict[str, str] = {}
-        if entry.get("support"):
-            cell["plcySprtCn"] = str(entry["support"]).strip()
-        if entry.get("target"):
-            cell["ptcpPrpTrgtCn"] = str(entry["target"]).strip()
+        if entry.support.strip():
+            cell["plcySprtCn"] = entry.support.strip()
+        if entry.target.strip():
+            cell["ptcpPrpTrgtCn"] = entry.target.strip()
         if cell:
-            overrides[policy_key(rows[idx])] = cell
+            overrides[policy_key(rows[entry.idx])] = cell
     logger.info("비교 표 셀 요약 완료 — %d/%d건", len(overrides), len(rows))
     return overrides
 
