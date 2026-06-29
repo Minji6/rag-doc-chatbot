@@ -1,7 +1,7 @@
 import logging
 from ..state import ShareState, DomainResult
 from ..agents.employment_agent import EmploymentAgent
-from ..constants import AGENT_CATEGORY
+from ..constants import AGENT_CATEGORY, agent_mode
 
 logger = logging.getLogger(__name__)
 agent = EmploymentAgent()
@@ -29,7 +29,7 @@ async def employment_node(state: ShareState) -> dict:
         inquiry=inquiry,
         knowledge=knowledge,
         user_profile=state.get("user_profile"),
-        inquiry_type=state.get("inquiry_type", "검색"),
+        inquiry_type=agent_mode(state.get("inquiry_type", [])),
     )
 
     source = "rag" if policies else "none"

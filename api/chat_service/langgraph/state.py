@@ -44,7 +44,9 @@ class ShareState(TypedDict):
     user_profile: dict     # 로그인 유저 프로필 (guest일 경우 빈 dict)
 
     category: list[str]    # 분야 리스트: ["주거", "일자리", ...] — 멀티 분야 라우팅용
-    inquiry_type: str      # 의도: 검색 / 추천 / 상세조회 / 비교
+    inquiry_type: list[str]  # 의도 리스트: 검색 / 추천 / 상세조회 / 비교 — "추천하고 비교" 같은 복합 요청 지원
+    is_general: bool       # 정책과 무관한 인사·잡담·일반질문 여부 (True면 general 노드로 라우팅)
+    requested_count: int | None  # 사용자가 명시한 정책 개수 ("3개만 추천") — 없으면 None(기본 k)
 
     # 검색·생성 핸드오프 + 결과 채널 — 도메인 이름(housing/employment/education/welfare)을 키로 가진 dict.
     # fan-out 시 각 도메인이 자기 키에만 쓰고, _merge_dict reducer가 자동 머지한다.

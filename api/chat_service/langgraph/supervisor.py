@@ -17,11 +17,30 @@ from .nodes.welfare_search_node import welfare_search_node
 from .nodes.welfare_node import welfare_node
 from .nodes.route_node_fun import route_node_fun
 from .nodes.composer_node import composer_node
+from .nodes.general_node import general_node
 from .nodes.image_analysis_node import image_analysis_node
 from .nodes.contextualize_node import contextualize_node
 from api.chat_service.policy_memory import get_last_policies, save_last_policies
 
 logger = logging.getLogger(__name__)
+
+
+def _shape_response(
+    inquiry_types: list[str], message: str, policies: list[dict]
+) -> tuple[str, list[dict]]:
+    """의도(inquiry_type)에 맞춰 message/policies를 정형한다 (프론트 렌더 분기용).
+
+    - 추천 단독: message만 보낸다 (policies 비움) — 추천 사유가 담긴 메시지 위주.
+    - 상세조회 단독: policies만 보낸다 (message 비움) — 프론트가 상세 카드로 렌더.
+    - 그 외(검색/비교/복합 의도/멀티 분야): 둘 다 보낸다 (정보 손실 방지).
+    복합 요청("추천하고 비교")은 단독이 아니므로 둘 다 유지한다.
+    """
+    types = set(inquiry_types or [])
+    if types == {"추천"}:
+        return message, []
+    if types == {"상세조회"}:
+        return "", policies
+    return message, policies
 
 
 class ChatbotSupervisor:
@@ -43,6 +62,7 @@ class ChatbotSupervisor:
         graph.add_node("welfare_search", welfare_search_node)      # 복지: 검색 노드
         graph.add_node("welfare", welfare_node)                    # 복지: 생성 노드
         graph.add_node("composer", composer_node)                  # 조립: fragment → 최종 답변
+        graph.add_node("general", general_node)                     # 일반대화: 정책 무관 인사·잡담 응대
         graph.add_node("housing_search", housing_search_node)  # 주거: 검색 노드
         graph.add_node("housing", housing_node)                # 주거: 생성 노드
         # 시작 → 이미지 분석 → 맥락화 → 의도 분석
@@ -59,6 +79,7 @@ class ChatbotSupervisor:
             "housing":    "housing_search",
             "education":  "education_search",
             "welfare":    "welfare_search",
+            "general":    "general",  # 일반대화 — 검색 우회
         }
         graph.add_conditional_edges(
             "analysis",
@@ -77,6 +98,8 @@ class ChatbotSupervisor:
             graph.add_edge(domain_node, "composer")
 
         graph.add_edge("composer", END)
+        # 일반대화는 composer 조립을 거치지 않고 바로 종료 (general_node가 final_response를 직접 채움).
+        graph.add_edge("general", END)
 
         self.workflow = graph.compile()
 
@@ -94,10 +117,10 @@ class ChatbotSupervisor:
 
         Returns:
             dict: {
-                "message": str — composer가 조립한 최종 답변 텍스트,
+                "message": str — composer가 조립한 최종 답변 텍스트 (상세조회 단독이면 ""),
                 "category": list[str] — analysis_node가 분류한 분야 리스트 (멀티 가능),
-                "inquiry_type": str — 의도 ("검색"/"추천"/"상세조회"/"비교"),
-                "policies": list[dict] — 활성 도메인의 raw 정책 메타 (D-day 계산 등 프론트 처리용),
+                "inquiry_type": list[str] — 의도 리스트 (검색/추천/상세조회/비교, 복합 가능),
+                "policies": list[dict] — 활성 도메인의 raw 정책 메타 (추천 단독이면 빈 리스트),
                 "suggestions": list[str] — 교육 에이전트가 생성한 follow-up 질문,
             }
         """
@@ -111,7 +134,9 @@ class ChatbotSupervisor:
             user_role=user_role,
             user_profile=user_profile,
             category=[],
-            inquiry_type="",
+            inquiry_type=[],
+            is_general=False,
+            requested_count=None,
             domain_knowledge={},
             domain_policies={},
             domain_results={},
@@ -138,15 +163,24 @@ class ChatbotSupervisor:
                 policies.extend(result.get("policies", []))
 
         # 이번 턴이 보여준 정책을 다음 후속질문 해소용으로 저장 (빈 결과면 내부에서 클리어).
+        # 저장은 정형 전 policies로 — 추천 단독이라 응답에선 비워도 후속질문("두번째 거")은 해소돼야 한다.
         if thread_id:
             save_last_policies(thread_id, policies)
 
+        # 의도별 응답 정형 (추천=message만 / 상세조회=policies만 / 그 외=둘 다).
+        inquiry_types = final_state.get("inquiry_type", [])
+        full_message = final_state["final_response"]
+        message, policies = _shape_response(inquiry_types, full_message, policies)
+
         return {
-            "message": final_state["final_response"],
+            "message": message,
             "category": final_state.get("category", []),
-            "inquiry_type": final_state.get("inquiry_type", ""),
+            "inquiry_type": inquiry_types,
             "policies": policies,
             "suggestions": final_state.get("suggestions", []),
+            # 대화기록 저장용 — 상세조회처럼 message를 비워도 맥락 보존을 위해 전체 답변을 따로 넘긴다.
+            # 컨트롤러가 이 값으로 히스토리를 저장하고 프론트 응답에선 제외한다.
+            "full_message": full_message,
         }
 
     def get_graph_image(self) -> bytes:

@@ -48,7 +48,7 @@ async def employment_search_node(state: ShareState) -> dict:
     user_profile = state.get("user_profile") or {}
     # 출력 정책 수(k)는 4개 도메인 공통(resolve_search_k). 단 취업은 만료 정책을 걸러내므로
     # 후보를 k배(oversample)만큼 더 가져온 뒤, 살아남은 것 중 k개만 사용한다.
-    k = resolve_search_k(state.get("inquiry_type", "검색"))
+    k = resolve_search_k(state.get("inquiry_type", []), state.get("requested_count"))
     fetch_k = k * EMPLOYMENT_SEARCH_OVERSAMPLE
     logger.info("취업 정책 검색 노드 실행 — k=%d(후보 %d), query=%s", k, fetch_k, query[:30])
 

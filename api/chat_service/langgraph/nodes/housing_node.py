@@ -1,6 +1,6 @@
 import logging
 
-from api.chat_service.langgraph.constants import AGENT_CATEGORY
+from api.chat_service.langgraph.constants import AGENT_CATEGORY, agent_mode
 from ..state import DomainResult, ShareState
 from ..agents.housing_agent import HousingAgent
 
@@ -25,7 +25,7 @@ async def housing_node(state: ShareState) -> dict:
         inquiry=inquiry,
         knowledge=knowledge,
         user_profile=state.get("user_profile"),
-        inquiry_type=state.get("inquiry_type", "검색"),
+        inquiry_type=agent_mode(state.get("inquiry_type", [])),
     )
     
     source = "rag" if policies else "none"
