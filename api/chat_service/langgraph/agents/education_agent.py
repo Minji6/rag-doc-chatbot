@@ -6,6 +6,7 @@ from fastapi import Depends
 from langchain.agents import create_agent
 from langchain.tools import tool
 from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE
+from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
 logger = logging.getLogger(__name__)
 
@@ -364,36 +365,13 @@ class EducationAgent:
         if user_profile:
             prompt += f"\n[사용자 정보]\n{user_profile}\n"
 
-        prompt += (
-            "\n\n답변 작성 후 반드시 아래 구분자와 함께 사용자가 다음에 할 법한 "
-            "follow-up 질문 3개를 JSON 배열로 추가하세요.\n"
-            "---SUGGESTIONS---\n"
-            "[\"질문1\", \"질문2\", \"질문3\"]"
-        )
+        prompt += SUGGESTIONS_PROMPT
 
         result = await agent.ainvoke(
             {"messages": [{"role": "user", "content": prompt}]}
         )
         content = result["messages"][-1].content
-        return self._parse_suggestions(content)
-
-    @staticmethod
-    def _parse_suggestions(content: str) -> tuple[str, list[str]]:
-        """LLM 응답에서 본문과 suggestions를 분리한다."""
-        separator = "---SUGGESTIONS---"
-        if separator not in content:
-            return content.strip(), []
-        parts = content.split(separator, 1)
-        text = parts[0].strip()
-        try:
-            suggestions = json.loads(parts[1].strip())
-            if not isinstance(suggestions, list):
-                suggestions = []
-            else:
-                suggestions = [s for s in suggestions if isinstance(s, str)]
-        except (json.JSONDecodeError, IndexError):
-            suggestions = []
-        return text, suggestions
+        return parse_suggestions(content)
 
 
 EducationAgentDep = Annotated[EducationAgent, Depends(EducationAgent)]

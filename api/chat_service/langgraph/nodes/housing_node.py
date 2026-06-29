@@ -21,16 +21,16 @@ async def housing_node(state: ShareState) -> dict:
     if image_context:
         inquiry = f"{inquiry}\n\n[첨부 이미지 내용]\n{image_context}"
 
-    text = await agent.run(
+    text, suggestions = await agent.run(
         inquiry=inquiry,
         knowledge=knowledge,
         user_profile=state.get("user_profile"),
         inquiry_type=agent_mode(state.get("inquiry_type", [])),
     )
-    
+
     source = "rag" if policies else "none"
     result = DomainResult (
         text = text, policies=policies, category=_CATEGORY, source=source
     )
-    
-    return {"domain_results": {"housing": result}}
+
+    return {"domain_results": {"housing": result}, "suggestions": suggestions}
