@@ -208,6 +208,29 @@ def classify_training_coverage(policy_name: str, policy_content: str) -> str:
 _TOOLS = [estimate_income_grade, filter_by_gpa, classify_training_coverage]
 
 #----------------------------------------------
+# 도구 우선 호출 규칙 — 모든 inquiry_type 프롬프트 앞에 공통 주입.
+# 계산형 질문(소득분위/학점/급여여부)에서 정책 나열에 묻혀 도구가 호출되지 않던 문제를 막는다.
+#----------------------------------------------
+_TOOL_PRIORITY_RULE = """[도구 사용 규칙 — 최우선, 아래 출력 형식 규칙보다 우선한다]
+사용자가 본인의 소득·가구원수·학점·훈련비(급여/비급여)를 직접 묻거나 수치를 제시하면,
+정책을 나열하기 전에 **반드시 먼저 해당 도구를 호출**하세요.
+- 월소득(또는 가구소득)과 가구원 수가 함께 주어지면 → estimate_income_grade를 즉시 호출.
+  (가구원 수가 없으면 임의 가정하지 말고 먼저 물어보세요.)
+- 사용자가 본인 학점(GPA)을 언급하고 [정책 구조화 데이터]가 있으면 → filter_by_gpa를 호출해
+  학점 미달 정책을 제외한 뒤 추천하세요.
+- 훈련비 지원(급여/비급여, 내일배움카드 등) 여부를 물으면 → classify_training_coverage를 호출.
+
+[도구 결과 출력 — 반드시 준수]
+도구를 호출했다면, 그 **계산 결과를 답변의 가장 첫 번째 `### ` 블록**으로 제시하세요.
+정책 목록(### 정책명 블록들)은 그 다음에 이어 붙입니다. 예:
+  ### 소득분위 추정 결과
+  (estimate_income_grade가 돌려준 내용을 그대로 옮겨 적기)
+  ### 학점 진단 결과 / ### 훈련비 지원 유형  ← 사용한 도구에 맞는 제목 사용
+도구 결과를 추측으로 대체하거나 생략하지 말고, 호출해서 얻은 실제 값을 그대로 노출하세요.
+
+"""
+
+#----------------------------------------------
 # inquiry_type별 system_prompt
 #----------------------------------------------
 _SYSTEM_PROMPTS = {
@@ -322,7 +345,7 @@ class EducationAgent:
         # 모든 프롬프트 끝에 OUTPUT_FORMAT_GUIDE를 붙여 분야간 출력 형식을 통일.
         self._agents = {
             inquiry_type: create_agent(
-                model=model, tools=_TOOLS, system_prompt=prompt + OUTPUT_FORMAT_GUIDE
+                model=model, tools=_TOOLS, system_prompt=_TOOL_PRIORITY_RULE + prompt + OUTPUT_FORMAT_GUIDE
             )
             for inquiry_type, prompt in _SYSTEM_PROMPTS.items()
         }
