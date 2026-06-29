@@ -37,14 +37,14 @@ class UserResponse(BaseModel):
     user_id:     int
     nickname:    str
     birth_date:  date
-    zipcd:       str | None = None
-    category:    str | None = None
-    schoolcd:    str | None = None
-    plcymajorcd: str | None = None
-    jobcd:       str | None = None
-    mrgsttscd:   str | None = None
-    sbizcd:      str | None = None
-    earncndsecd: int | None = None
+    zipcd:       Annotated[str | None, Field(None)]
+    category:    Annotated[str | None, Field(None)]
+    schoolcd:    Annotated[str | None, Field(None)]
+    plcymajorcd: Annotated[str | None, Field(None)]
+    jobcd:       Annotated[str | None, Field(None)]
+    mrgsttscd:   Annotated[str | None, Field(None)]
+    sbizcd:      Annotated[str | None, Field(None)]
+    earncndsecd: Annotated[int | None, Field(None)]
     model_config = {"from_attributes": True}
 
 
