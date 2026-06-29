@@ -78,6 +78,8 @@ def estimate_income_grade(monthly_income: int, family_size: int) -> str:
         str: 추정 소득분위 및 국가장학금 신청 가능 여부
     """
     logger.info("estimate_income_grade 실행: income=%d, family_size=%d", monthly_income, family_size)
+    if family_size <= 0:
+        return "가구원 수 정보가 없습니다. 사용자에게 가구원 수(몇 인 가구인지)를 먼저 질문하세요."
     capped = min(max(family_size, 1), 7)
     median = _MEDIAN_INCOME[capped]
     ratio = monthly_income / median
@@ -243,10 +245,15 @@ _SYSTEM_PROMPTS = {
 각 정책마다 왜 이 사용자에게 적합한지 추천 이유를 한 줄로 명시하세요.
 [사용자 정보]가 없으면(비로그인) 일반적인 추천 기준으로 안내하세요.
 
-다음 도구를 적극 활용하세요:
-- estimate_income_grade: 소득분위 추정이 필요할 때 호출. [사용자 정보]에 월소득(earncndsecd)이 있으면 그 값을 monthly_income으로 사용하고, 가구원 수(family_size)는 사용자에게 물어보세요
-- filter_by_gpa: 사용자 학점으로 신청 가능한 정책만 필터링하여 추천
-- classify_training_coverage: 훈련비 지원 여부를 확인해 추천 근거로 활용
+[이미지 분석 결과]가 [질문]에 포함된 경우, 추출된 학점·소득 정보를 추천 이유에 구체적으로 언급하세요.
+예: "학점 3.52 기준으로 해당 정책의 최소 학점 조건을 충족하므로 추천합니다."
+
+다음 도구를 활용하세요:
+- estimate_income_grade: 사용자가 소득분위를 직접 물어보거나 국가장학금 신청 가능 여부를 확인해달라고
+  명시적으로 요청할 때만 호출하세요. 사용자가 소득 정보를 요청하지 않았다면 절대 호출하지 마세요.
+  "급여 훈련"은 소득 추정이 아니라 아래 classify_training_coverage를 사용하세요.
+- filter_by_gpa: [질문]이나 [이미지 분석 결과]에서 학점 정보가 확인될 때 호출해 학점 미달 정책을 제외
+- classify_training_coverage: 사용자가 급여/비급여 훈련 여부를 물을 때 호출
 
 # 답변 형식 (인사말·맺음말 없이 곧바로 아래 본문부터)
 추천 정책마다 아래 ### 블록을 반복하세요.
