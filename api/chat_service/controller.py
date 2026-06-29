@@ -77,7 +77,11 @@ async def chat(
     # image_context가 있으면 사용자 메시지에 포함해 저장한다.
     # 후속 턴의 contextualize_node / general_node가 messages를 통해 이미지 분석 결과를 참조할 수 있도록.
     image_context = result.pop("image_context", "") or ""
-    history_user_message = f"{message}\n\n[이미지 분석 결과]\n{image_context}" if image_context else message
+    if image_context:
+        from api.chat_service.langgraph.nodes.image_analysis_node import IMAGE_CONTEXT_MARKER
+        history_user_message = f"{message}\n\n{IMAGE_CONTEXT_MARKER}{image_context}"
+    else:
+        history_user_message = message
     await agent.save_exchange(history_user_message, history_message, thread_id)
     logger.info(f"[{thread_id}] 대화 저장 완료")
 

@@ -207,7 +207,10 @@ def classify_training_coverage(policy_name: str, policy_content: str) -> str:
     return "\n".join(lines)
 
 
+# 추천 모드는 소득 추정 툴 제외 — 사용자가 명시적으로 요청하지 않는 한 소득분위 계산은 불필요.
+# 프롬프트 제한만으로는 LLM이 user_profile의 earncndsecd를 보고 자동 호출하는 것을 막기 어려움.
 _TOOLS = [estimate_income_grade, filter_by_gpa, classify_training_coverage]
+_TOOLS_RECOMMEND = [filter_by_gpa, classify_training_coverage]
 
 #----------------------------------------------
 # inquiry_type별 system_prompt
@@ -333,7 +336,7 @@ class EducationAgent:
         self._agents = {
             inquiry_type: create_agent(
                 model=model,
-                tools=_TOOLS,
+                tools=_TOOLS_RECOMMEND if inquiry_type == "추천" else _TOOLS,
                 system_prompt=prompt + (
                     COMPARISON_COMMENT_GUIDE if inquiry_type == "비교" else OUTPUT_FORMAT_GUIDE
                 ),
