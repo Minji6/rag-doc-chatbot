@@ -451,7 +451,10 @@ class WelfareAgent:
         elif inquiry_type == "상세조회":
             prompt += OUTPUT_DETAIL_GUIDE
 
-        prompt += SUGGESTIONS_PROMPT
+        # 프로필 수집 분기("나이를 알려주세요" 등 되묻는 응답)에서는 follow-up 질문을 붙이지 않는다.
+        # 정보를 되묻는 답변에 추천 질문 3개가 따라붙으면 UX상 어색하기 때문.
+        if not profile_questions:
+            prompt += SUGGESTIONS_PROMPT
         result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
         text, suggestions = parse_suggestions(str(result["messages"][-1].content))
 

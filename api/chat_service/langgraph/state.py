@@ -1,3 +1,4 @@
+from itertools import zip_longest
 from typing import Annotated, Literal, TypedDict
 from langgraph.graph import add_messages
 
@@ -26,12 +27,15 @@ def _merge_suggestions(left: list | None, right: list | None) -> list:
     """LangGraph reducer: 도메인 노드들이 병렬(fan-out)로 내놓는 follow-up 질문을 병합.
 
     각 도메인이 자기 suggestions를 동시에 쓰므로 reducer 없이는 동시쓰기 충돌이 난다.
-    순서 보존 + 중복 제거 후 최대 3개로 제한(멀티 분야 질문에서 질문이 과하게 쌓이는 것 방지).
+    중복 제거 후 최대 3개로 제한(질문이 과하게 쌓이는 것 방지)하되, 단순 이어붙이기는
+    먼저 들어온 도메인 질문만 살아남아 다른 분야가 통째로 무시된다. 라운드로빈으로 번갈아
+    뽑아 멀티 분야 질문에서도 분야 간 균형을 맞춘다.
     """
     merged: list[str] = []
-    for item in (left or []) + (right or []):
-        if item not in merged:
-            merged.append(item)
+    for a, b in zip_longest(left or [], right or []):
+        for item in (a, b):
+            if item is not None and item not in merged:
+                merged.append(item)
     return merged[:3]
 
 
