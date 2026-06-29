@@ -28,6 +28,8 @@ class UserCreateRequest(BaseModel):
     @field_validator("birth_date")
     @classmethod
     def birth_date_not_future(cls, v: date) -> date:
+        if v < date(1900, 1, 1):
+            raise ValueError("생년월일은 1900-01-01 이후여야 합니다.")
         if v > date.today():
             raise ValueError("생년월일은 오늘 이후 날짜로 등록할 수 없습니다.")
         return v
