@@ -230,6 +230,7 @@ _SYSTEM_PROMPTS = {
 - 지원 내용: 지원 유형별 세부 내용 / 지원 금액·범위
 - 참여 자격: 기본 요건 / 성적·소득 조건 / 전공·학과 제한 여부
 - 신청 방법: 신청 기간·경로 확인 → 필수 서류 준비 → 대학(기관) 추천 또는 직접 신청 → 자격 심사 및 선정
+- 신청기간: [정책 구조화 데이터]의 dday 값을 그대로 표시 (예: D-150, 마감, 상시접수)
 - 신청 URL: 정책 정보의 "신청 URL" 값을 raw URL 그대로 (없으면 "정보 없음")
 
 [필수 확인사항]
@@ -257,6 +258,7 @@ _SYSTEM_PROMPTS = {
 ### [정책명]
 - 추천 이유: (사용자 상황과 연결된 이유)
 - 지원 내용 요약
+- 신청기간: [정책 구조화 데이터]의 dday 값을 그대로 표시 (예: D-150, 마감, 상시접수)
 - 신청 URL: raw URL 그대로 (없으면 "정보 없음")
 
 [꼭 확인하세요]
@@ -319,6 +321,7 @@ class EducationAgent:
     - estimate_income_grade: 소득분위 추정 (2024 기준 중위소득)
     - filter_by_gpa: 학점 기준 장학금 필터
     - classify_training_coverage: 급여/비급여 훈련 분류
+    - calculate_dday: 신청 마감 D-day 계산 (공통 툴)
     """
 
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
