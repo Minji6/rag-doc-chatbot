@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Annotated
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Integer, String, Date, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
 from api.common.sqlalchemy_conf import Base
@@ -17,6 +17,20 @@ class UserCreateRequest(BaseModel):
     mrgsttscd:   Annotated[str | None, Field(None, max_length=50)]
     sbizcd:      Annotated[str | None, Field(None, max_length=200)]
     earncndsecd: int | None = None
+
+    @field_validator("nickname")
+    @classmethod
+    def nickname_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("닉네임은 빈 값일 수 없습니다.")
+        return v.strip()
+
+    @field_validator("birth_date")
+    @classmethod
+    def birth_date_not_future(cls, v: date) -> date:
+        if v > date.today():
+            raise ValueError("생년월일은 오늘 이후 날짜로 등록할 수 없습니다.")
+        return v
 
 
 class UserResponse(BaseModel):
