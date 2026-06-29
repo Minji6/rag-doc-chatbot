@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
+from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class EmploymentAgent:
     async def run(
         self, inquiry: str, knowledge: str, user_profile: dict | None = None,
         inquiry_type: str = "검색"
-    ) -> str:
+    ) -> tuple[str, list[str]]:
         """검색된 정책(knowledge)으로 답변을 생성한다. (검색은 하지 않음)
 
         Args:
@@ -59,7 +60,7 @@ class EmploymentAgent:
             user_profile: 로그인 유저 프로필 (guest면 None/빈 dict)
             inquiry_type: 질문 의도. "비교"면 표 대신 짧은 정성 코멘트만 생성.
         Returns:
-            str: 생성된 사용자용 답변 텍스트
+            tuple[str, list[str]]: (생성된 답변 텍스트, follow-up 질문 목록)
         """
         prompt = (
             "다음 정보를 바탕으로 일자리 정책 답변을 작성하세요.\n\n"
@@ -76,10 +77,11 @@ class EmploymentAgent:
         elif inquiry_type == "상세조회":
             prompt += OUTPUT_DETAIL_GUIDE
 
+        prompt += SUGGESTIONS_PROMPT
         result = await self.agent.ainvoke(
             {"messages": [{"role": "user", "content": prompt}]}
         )
-        return result["messages"][-1].content
+        return parse_suggestions(result["messages"][-1].content)
 
 
 EmploymentAgentDep = Annotated[EmploymentAgent, Depends(EmploymentAgent)]

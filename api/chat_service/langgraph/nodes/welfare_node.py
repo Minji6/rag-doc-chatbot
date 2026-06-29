@@ -19,7 +19,7 @@ async def welfare_node(state: ShareState) -> dict:
     if image_context:
         inquiry = f"{inquiry}\n\n[첨부 이미지 내용]\n{image_context}"
 
-    text, policies, source, merged_profile = await agent.run(
+    text, policies, source, merged_profile, suggestions = await agent.run(
         inquiry=inquiry,
         knowledge=state.get("domain_knowledge", {}).get("welfare", ""),
         policies=state.get("domain_policies", {}).get("welfare", []),
@@ -28,4 +28,8 @@ async def welfare_node(state: ShareState) -> dict:
         inquiry_type=state.get("inquiry_type", "검색"),
     )
     result = DomainResult(text=text, policies=policies, category=_CATEGORY, source=source)
-    return {"domain_results": {"welfare": result}, "user_profile": merged_profile}
+    return {
+        "domain_results": {"welfare": result},
+        "user_profile": merged_profile,
+        "suggestions": suggestions,
+    }

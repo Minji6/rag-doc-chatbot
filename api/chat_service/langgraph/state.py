@@ -1,3 +1,4 @@
+from itertools import zip_longest
 from typing import Annotated, Literal, TypedDict
 from langgraph.graph import add_messages
 
@@ -20,6 +21,22 @@ class DomainResult(TypedDict):
 def empty_domain_result(category: str = "") -> DomainResult:
     """초기 state 및 fallback에 쓰는 빈 DomainResult."""
     return DomainResult(text="", policies=[], category=category, source="none")
+
+
+def _merge_suggestions(left: list | None, right: list | None) -> list:
+    """LangGraph reducer: 도메인 노드들이 병렬(fan-out)로 내놓는 follow-up 질문을 병합.
+
+    각 도메인이 자기 suggestions를 동시에 쓰므로 reducer 없이는 동시쓰기 충돌이 난다.
+    중복 제거 후 최대 3개로 제한(질문이 과하게 쌓이는 것 방지)하되, 단순 이어붙이기는
+    먼저 들어온 도메인 질문만 살아남아 다른 분야가 통째로 무시된다. 라운드로빈으로 번갈아
+    뽑아 멀티 분야 질문에서도 분야 간 균형을 맞춘다.
+    """
+    merged: list[str] = []
+    for a, b in zip_longest(left or [], right or []):
+        for item in (a, b):
+            if item is not None and item not in merged:
+                merged.append(item)
+    return merged[:3]
 
 
 def _merge_dict(left: dict | None, right: dict | None) -> dict:
@@ -60,5 +77,6 @@ class ShareState(TypedDict):
     last_policies: list[dict]      # 직전 턴이 사용자에게 보여준 정책 메타 (controller가 thread별로 캐리)
     resolved_policies: list[dict]  # 후속질문이 가리키는 직전 정책 부분집합 ("두번째"/"공공근로" 등 해소 결과)
 
-    suggestions: list[str]     # 교육 에이전트가 생성한 follow-up 질문 (PoC)
+    # 도메인 에이전트들이 생성한 follow-up 질문. fan-out 시 _merge_suggestions가 병합(중복 제거·최대 3개).
+    suggestions: Annotated[list[str], _merge_suggestions]
     final_response: str        # composer_node가 채우는 최종 답변
