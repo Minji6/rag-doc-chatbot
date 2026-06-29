@@ -161,4 +161,7 @@ POLICY_METADATA_FIELDS = (
     "srhmhldIncmCd",    # 소득 분위 조건
     "plcyAplyRgnCd",    # 신청 지역 조건
     "schoolcd",         # 학력 조건
+    # 카드 UI 표시용
+    "aplyMthdCn",       # 신청 방법
+    "cnsgNmCn",         # 문의처
 )
