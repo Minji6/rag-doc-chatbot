@@ -27,6 +27,7 @@ async def welfare_node(state: ShareState) -> dict:
         user_role=state.get("user_role", "guest"),
         user_profile=state.get("user_profile"),
         inquiry_type=agent_mode(state.get("inquiry_type", [])),
+        messages=state.get("messages", []),
     )
     result = DomainResult(text=text, policies=policies, category=_CATEGORY, source=source)
     return {

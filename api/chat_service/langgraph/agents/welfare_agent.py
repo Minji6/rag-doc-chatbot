@@ -1,10 +1,11 @@
 import json
 import logging
+import re
 from typing import Annotated, Literal
 from fastapi import Depends
 from langchain.agents import create_agent
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain.chat_models import init_chat_model
 from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
 from ..tools.dday import calculate_dday
@@ -51,6 +52,66 @@ def _build_profile_context(user_profile: dict) -> str:
     lines.append(f"  학력        : {v(user_profile.get('schoolcd'))}")
     lines.append(f"  특수 분류   : {v(user_profile.get('sbizcd'))}")
     return "\n".join(lines)
+
+
+def _msg_type(msg) -> str:
+    return getattr(msg, "type", None) or msg.get("type", msg.get("role", ""))
+
+def _msg_content(msg) -> str:
+    c = getattr(msg, "content", None) if hasattr(msg, "content") else msg.get("content", "")
+    return c if isinstance(c, str) else ""
+
+def _build_agent_history(messages: list) -> list[HumanMessage | AIMessage]:
+    """LangGraph 에이전트에 전달할 히스토리. human/ai 메시지만 최근 6개."""
+    result: list[HumanMessage | AIMessage] = []
+    for msg in messages:
+        t = _msg_type(msg)
+        content = _msg_content(msg)
+        if not content.strip():
+            continue
+        if t in ("human", "user"):
+            result.append(HumanMessage(content=content))
+        elif t in ("ai", "assistant"):
+            result.append(AIMessage(content=content))
+    return result[-6:]
+
+
+_ELIGIBILITY_RE = re.compile(
+    r"자격[이가]?\s*(돼|됩|되[나요]?)|신청\s*(가능|할\s*수)|해당\s*(돼|됩|되[나요]?)|대상이"
+)
+
+
+def _is_eligibility_inquiry(inquiry: str) -> bool:
+    return bool(_ELIGIBILITY_RE.search(inquiry))
+
+
+def _build_eligibility_prompt(policies: list[dict], user_profile: dict) -> str:
+    """모든 RAG 정책에 대해 자격 판정하고 LLM 프롬프트에 삽입할 텍스트 반환."""
+    result_lines = [
+        "[자격 판정 결과 — 각 정책 ### 블록 마지막에 ⚠️/❌ 항목만 추가하세요. ✅만 있으면 생략]",
+        "(check_eligibility_detailed 재호출 불필요 — 이미 계산된 결과입니다)",
+    ]
+    has_any = False
+    for policy in policies:
+        name = policy.get("plcyNm", "")
+        if not name:
+            continue
+        raw = check_eligibility_detailed.invoke({
+            "user_profile": user_profile,
+            "policy_metadata": policy,
+        })
+        bad_items = [
+            line.strip()
+            for line in raw.splitlines()
+            if (line.strip().startswith("⚠️ ") or line.strip().startswith("❌ "))
+            and not line.strip().startswith(("⚠️ 확인필요", "❌ 불가"))
+        ]
+        if bad_items:
+            result_lines.append(f"\n[{name}]")
+            for item in bad_items:
+                result_lines.append(f"  - {item}")
+            has_any = True
+    return "\n".join(result_lines) if has_any else ""
 
 
 ##############################################################
@@ -166,18 +227,22 @@ async def _search_web(query: str, exclude_titles: list[str], count: int) -> str:
 ##############################################################
 
 _TOOL_PRIORITY_RULE = """[도구 사용 규칙 — 최우선, 아래 출력 형식 규칙보다 우선한다]
-사용자가 특정 정책의 신청 가능 여부·자격 여부를 물으면,
-정책을 나열하기 전에 **반드시 먼저 check_eligibility_detailed를 호출**하세요.
-- "신청 가능해?", "자격 되나?", "해당돼?", "대상이야?" 등의 표현이 있으면 → check_eligibility_detailed를 즉시 호출.
-  ([정책 구조화 데이터]에 있는 정책에만 사용하고, 웹 검색 결과에는 사용하지 마세요.)
+- check_eligibility_detailed는 직접 호출하지 마세요. 자격 판정이 필요한 경우 프롬프트의 [자격 판정 결과] 섹션을 사용하세요.
 - 마감일·신청 기간을 물으면 → calculate_dday를 즉시 호출.
 
-[도구 결과 출력 — 반드시 준수]
-도구를 호출했다면, 그 **계산 결과를 답변의 가장 첫 번째 `### ` 블록**으로 제시하세요.
-정책 목록(### 정책명 블록들)은 그 다음에 이어 붙입니다. 예:
-  ### 자격 판정 결과
-  (check_eligibility_detailed가 돌려준 내용을 그대로 옮겨 적기)
-도구 결과를 추측으로 대체하거나 생략하지 마세요.
+[자격 판정 결과 처리 — 반드시 준수]
+프롬프트에 [자격 판정 결과] 섹션이 있으면:
+- 각 정책 이름과 매칭되는 ⚠️/❌ 항목만 해당 정책 ### 블록의 **마지막 줄**에 아래 형식으로 추가하세요.
+- ✅ 항목은 표시하지 마세요.
+
+출력 형식 예시:
+  - ⚠️ 지역: 사용자 거주지 정보 없음
+  - ❌ 연령 ✗ (만 25세, 최대 24세 이하)
+
+규칙:
+- 별도 ### 자격 판정 결과 블록을 만들지 마세요.
+- 해당 정책의 모든 항목이 ✅이면 자격 관련 필드를 추가하지 마세요.
+- ✅/❌/⚠️ 결과와 무관하게 모든 정책을 ### 블록으로 출력하세요.
 
 """
 
@@ -186,9 +251,9 @@ _SYSTEM_PROMPT = """당신은 청년 복지문화 정책 전문가입니다.
 
 ## 도구 사용 규칙
 
-### check_eligibility_detailed (자격 확인 요청 시)
-- 사용자가 "신청 가능해?", "자격 되나?" 등을 물을 때 호출하세요.
-- **[정책 구조화 데이터]에 있는 RAG 정책에만 사용하세요.** [웹 검색 보완] 결과는 데이터 형식이 맞지 않으므로 호출하지 마세요.
+### check_eligibility_detailed (로그인 사용자 자격 확인 요청 시)
+- 프롬프트에 [자격 판정 결과] 섹션이 없고, 사용자가 자격 여부를 물을 때만 호출하세요.
+- **[정책 구조화 데이터]에 있는 RAG 정책에만 사용하세요.** [웹 검색 보완] 결과에는 사용하지 마세요.
 - user_profile에 [사용자 프로필] 값을, policy_metadata에 해당 정책 딕셔너리를 전달하세요.
 
 ### calculate_dday (마감일 관련 질문 시)
@@ -247,7 +312,11 @@ _SYSTEM_PROMPT = """당신은 청년 복지문화 정책 전문가입니다.
 # Agent 클래스 정의
 ##############################################################
 
-_TOOLS = [
+_TOOLS_GUEST = [
+    calculate_dday,
+]
+
+_TOOLS_USER = [
     check_eligibility_detailed,
     calculate_dday,
 ]
@@ -269,12 +338,13 @@ class WelfareAgent:
         self._model = model
 
     def _make_agent(self, user_profile: dict, user_role: str = "guest"):
+        tools = _TOOLS_USER if user_role == "user" else _TOOLS_GUEST
         profile_context = _build_profile_context(user_profile)
         system_prompt = _TOOL_PRIORITY_RULE + _SYSTEM_PROMPT + f"\n\n현재 사용자 role: {user_role}"
         if profile_context:
             system_prompt += f"\n\n{profile_context}"
         system_prompt += OUTPUT_FORMAT_GUIDE
-        return create_agent(model=self._model, tools=_TOOLS, system_prompt=system_prompt)
+        return create_agent(model=self._model, tools=tools, system_prompt=system_prompt)
 
     async def run(
         self,
@@ -284,6 +354,7 @@ class WelfareAgent:
         user_role: str = "guest",
         user_profile: dict | None = None,
         inquiry_type: str = "검색",
+        messages: list | None = None,
     ) -> tuple[str, list[dict], Literal["rag", "web", "none"], dict, list[str]]:
         user_profile = user_profile or {}
         policies = policies or []
@@ -318,10 +389,9 @@ class WelfareAgent:
                 "apply_period_type": policy.get("aplyPrdSeCd") or "",
             })
 
-        # role='user'일 때 빈 프로필 필드에 대한 유도 질문 생성 + 새 정보 merge
-        profile_questions = ""
+        # role='user'일 때 대화에서 새 프로필 정보 추출 후 merge
         if user_role == "user":
-            profile_questions, new_fields = await extract_user_profile(
+            _, new_fields = await extract_user_profile(
                 conversation_text=inquiry,
                 existing_profile_json=json.dumps(user_profile, ensure_ascii=False),
             )
@@ -329,20 +399,30 @@ class WelfareAgent:
                 user_profile = {**user_profile, **new_fields}
                 logger.info("user_profile 업데이트: %s", list(new_fields.keys()))
 
+        # 웹 전체 대체 시 구조화 데이터 없음 (형식 불일치) — RAG 정책만 전달
+        rag_policies = [] if web_searched else policies
+
+        # 자격 관련 질문이면 모든 RAG 정책에 대해 사전 판정 (로그인 사용자만)
+        eligibility_prompt = ""
+        if user_role == "user" and rag_policies and user_profile and _is_eligibility_inquiry(inquiry):
+            eligibility_prompt = _build_eligibility_prompt(rag_policies, user_profile)
+            if eligibility_prompt:
+                logger.info("자격 사전 판정 완료 — %d건", len(rag_policies))
+
         agent = self._make_agent(user_profile, user_role)
         prompt = (
             "다음 정보를 바탕으로 복지문화 정책 답변을 작성하세요.\n\n"
             f"[질문]\n{inquiry}\n\n"
             f"[정책 정보]\n{knowledge or '(검색된 정책 없음)'}\n"
         )
-        # 웹 전체 대체 시 구조화 데이터 없음 (형식 불일치) — RAG 정책만 전달
-        rag_policies = [] if web_searched else policies
         if rag_policies:
             prompt += (
                 f"\n[정책 구조화 데이터]\n"
                 f"{json.dumps(rag_policies, ensure_ascii=False, indent=2)}\n"
-                "자격 확인·마감일 도구 호출 시 위 데이터를 사용하세요."
+                "마감일 도구 호출 시 위 데이터를 사용하세요."
             )
+        if eligibility_prompt:
+            prompt += f"\n\n{eligibility_prompt}"
 
         # 비교 모드: 정형 표는 composer 담당. 에이전트는 복지 관점 코멘트만.
         if inquiry_type == "비교":
@@ -351,15 +431,9 @@ class WelfareAgent:
         elif inquiry_type == "상세조회":
             prompt += OUTPUT_DETAIL_GUIDE
 
-        # 프로필 수집 분기("나이를 알려주세요" 등 되묻는 응답)에서는 follow-up 질문을 붙이지 않는다.
-        # 정보를 되묻는 답변에 추천 질문 3개가 따라붙으면 UX상 어색하기 때문.
-        if not profile_questions:
-            prompt += SUGGESTIONS_PROMPT
-
-        # 유도 질문은 프롬프트 맨 끝에 위치해 LLM이 답변 마지막에 자연스럽게 붙이도록 한다.
-        if profile_questions:
-            prompt += f"\n[사용자 추가 확인 필요 항목]\n{profile_questions}\n답변 끝에 위 추가 질문을 자연스럽게 붙여주세요."
-        result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
+        prompt += SUGGESTIONS_PROMPT
+        history = _build_agent_history(messages or [])
+        result = await agent.ainvoke({"messages": history + [HumanMessage(content=prompt)]})  # type: ignore[arg-type]
         for msg in result["messages"]:
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tc in msg.tool_calls:
