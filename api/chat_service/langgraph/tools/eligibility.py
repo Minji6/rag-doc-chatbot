@@ -6,11 +6,14 @@
   LLM이 호출하는 상세 자격 판정 툴. 나이/지역/혼인 + 취업/소득/학력까지 검사.
 - user_profile이 비어있으면(=게스트) check_policy_eligibility는 None을 반환해 진단을 스킵한다.
 """
+import logging
 from typing import Literal, TypedDict
 
 from langchain.tools import tool
 
 from .age import calc_age
+
+logger = logging.getLogger(__name__)
 
 # 자격 판정: 적합 / 미충족 / 판단불가
 Verdict = Literal["eligible", "ineligible", "unknown"]
@@ -175,6 +178,8 @@ def check_eligibility_detailed(user_profile: dict, policy_metadata: dict) -> str
     Returns:
         str: 항목별 충족 여부(✅/❌/⚠️) + 최종 판정 결과
     """
+    policy_name = policy_metadata.get("plcyNm", "해당 정책")
+    logger.info("check_eligibility_detailed 실행 — 정책: %s", policy_name)
     age = calc_age(user_profile.get("birth_date"))
     checks: list[tuple[Verdict, str]] = [
         _check_age(policy_metadata, age),
@@ -184,8 +189,6 @@ def check_eligibility_detailed(user_profile: dict, policy_metadata: dict) -> str
         _check_income(policy_metadata, user_profile.get("earncndsecd")),
         _check_school(policy_metadata, user_profile.get("schoolcd")),
     ]
-
-    policy_name = policy_metadata.get("plcyNm", "해당 정책")
     lines = [f"[ {policy_name} ] 자격 판정 결과", "-" * 50]
     for verdict, reason in checks:
         icon = "✅" if verdict == "eligible" else ("❌" if verdict == "ineligible" else "⚠️")
