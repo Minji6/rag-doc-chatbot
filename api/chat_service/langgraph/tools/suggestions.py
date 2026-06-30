@@ -15,6 +15,7 @@ import json
 import re
 
 _SEPARATOR = "---SUGGESTIONS---"
+_SEPARATOR_ALT = "SUGGESTIONS---"  # LLM이 앞 --- 를 생략하는 경우 방어
 
 # raw_decode는 주어진 위치에서 JSON 값 하나만 파싱하고 '뒤에 붙은 텍스트는 무시'한다.
 # → LLM이 배열 뒤에 사족(설명)을 덧붙여도 배열만 깔끔히 추출할 수 있다.
@@ -60,13 +61,16 @@ def parse_suggestions(content: str) -> tuple[str, list[str]]:
     Returns:
         tuple[str, list[str]]: (본문 텍스트, follow-up 질문 목록)
     """
-    if _SEPARATOR in content:
-        body, _, tail = content.partition(_SEPARATOR)
+    # 정상 구분자(---SUGGESTIONS---) 또는 앞 --- 생략 변형(SUGGESTIONS---) 모두 처리.
+    sep = _SEPARATOR if _SEPARATOR in content else (_SEPARATOR_ALT if _SEPARATOR_ALT in content else None)
+    if sep:
+        body, _, tail = content.partition(sep)
         bracket = tail.find("[")
         if bracket != -1:
             items = _decode_str_list_at(tail, bracket)
             if items:
                 return body.strip(), items
+        # 구분자는 있지만 JSON 배열이 없거나 파싱 실패 → body만 반환 (구분자 이후 텍스트 제거).
         return body.strip(), []
 
     # 구분자 누락 방어 — 맨 끝에서 닫히는 문자열 배열만 후보로 본다(본문 중간 대괄호 오인 방지).
