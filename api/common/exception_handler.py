@@ -33,6 +33,7 @@ async def validation_exception_handler(request: Request, e: RequestValidationErr
 
 # 그 이외에 발생하는 모든 예외를 처리하는 함수
 async def exception_handler(request: Request, e: Exception):
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"message": "서버 에러", "detail": str(e)}

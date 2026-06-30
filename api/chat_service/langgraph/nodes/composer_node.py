@@ -146,11 +146,21 @@ _commentary_model = init_chat_model(
 
 
 def _build_body_brief(fragments: list[DomainResult]) -> str:
-    """LLM 멘트 생성용으로 본문에 담긴 분야·정책명을 짧게 요약한다 (사실 범위 고정)."""
+    """LLM 멘트 생성용으로 본문에 담긴 분야·정책명(+짧은 설명)을 요약한다 (사실 범위 고정).
+
+    정책명만 주면 LLM이 자기 학습 지식으로 빈칸을 메워(예: 사용자가 댄 유명 정책명) 검색되지
+    않은 내용을 지어낸다. 실제 검색된 정책의 설명을 함께 넘겨 멘트가 그 범위를 벗어나지 않게 한다.
+    """
     lines: list[str] = []
     for frag in fragments:
-        names = [p.get("plcyNm", "") for p in frag.get("policies", []) if p.get("plcyNm")]
-        names_txt = ", ".join(names) if names else "(정책명 없음)"
+        items: list[str] = []
+        for p in frag.get("policies", []):
+            nm = p.get("plcyNm", "")
+            if not nm:
+                continue
+            expl = str(p.get("plcyExplnCn") or p.get("plcySprtCn") or "").replace("\n", " ").strip()
+            items.append(f"{nm}({expl[:50]}…)" if expl else nm)
+        names_txt = ", ".join(items) if items else "(정책명 없음)"
         lines.append(f"- {frag.get('category', '')}: {names_txt}")
     return "\n".join(lines)
 
@@ -190,6 +200,8 @@ _COMMENTARY_SYSTEM_PROMPT = """당신은 청년정책 챗봇의 답변 편집자
 - [답변 본문에 포함된 정책]에 적힌 정책명·분야 범위 안에서만 말하세요. 금액·자격·마감 등 구체 수치를 새로 지어내지 마세요.
 - 의도가 '추천'이면 body_note에 왜 이 정책들이 사용자 상황에 맞는지 추천 이유를 담으세요.
 - 의도가 '비교'면 body_note에 선택 시 고려할 관점·주의점을 담으세요.
+- 의도가 '상세조회'면 intro는 [답변 본문에 포함된 정책]에 **실제로 있는 정책명**을 기준으로 "○○에 대한 자세한 정보를 알려드릴게요." 형태로 쓰세요. body_note에는 그 정책의 짧은 핵심 요약이나 신청 시 주의사항 한 마디를 담으세요(1~2문장).
+  ※ 사용자가 말한 정책명이 [답변 본문에 포함된 정책] 목록에 **없으면**, 그 이름을 사실인 양 단정해서 반복하지 마세요. 대신 "요청하신 내용과 관련된 정책을 찾아봤어요." 처럼 안내하고, 실제로 찾은 정책명을 언급하세요.
 - 정책 블록/표/분야 헤더를 직접 그리지 마세요(중복 방지). 인사는 intro에서 첫 대화일 때만.
 - 덧붙일 내용이 없으면 해당 필드는 빈 문자열로 두세요."""
 
@@ -197,26 +209,34 @@ _COMMENTARY_SYSTEM_PROMPT = """당신은 청년정책 챗봇의 답변 편집자
 # ── 비교 표 셀 요약(LLM) ──────────────────────────────────────────────────────
 # 비교 표의 '지원 내용/대상' 원문은 매우 길어 말줄임표로 잘렸다. 표에 넣기 전에
 # 한 번의 배치 LLM 호출로 핵심만 짧은 문구로 요약한다(정책당 호출 X). 실패하면 원문 폴백.
+#
+# 구조화 출력(with_structured_output)을 쓴다 — 평문 JSON + json.loads는 모델이 값 안에
+# 따옴표를 안 이스케이프하면 깨져서(확률적 파싱 실패) 요약이 산발적으로 폴백됐다.
 
-_summary_model = init_chat_model("gpt-4o-mini", model_provider="openai", temperature=0)
+class _CellSummary(BaseModel):
+    """정책 1건의 비교 표 셀 요약."""
+    idx: Annotated[int, Field(description="입력 정책의 0-based 순번")]
+    support: Annotated[str, Field(description="'지원 내용' 요약 (25자 이내, 한 줄, 없으면 빈 문자열)")] = ""
+    target: Annotated[str, Field(description="'지원 대상' 요약 (25자 이내, 한 줄, 없으면 빈 문자열)")] = ""
+
+
+class _CellSummaries(BaseModel):
+    """비교 대상 정책들의 셀 요약 묶음."""
+    items: list[_CellSummary]
+
+
+_summary_model = init_chat_model(
+    "gpt-4o-mini", model_provider="openai", temperature=0
+).with_structured_output(_CellSummaries)
 
 _CELL_SUMMARY_SYSTEM_PROMPT = """당신은 청년정책 비교 표의 셀 요약기입니다.
 각 정책의 '지원 내용'과 '지원 대상'을 표에 들어갈 만큼 **짧고 핵심만** 요약하세요.
 
 규칙:
-- 각 항목 25자 이내, 한 줄(줄바꿈·표 기호 금지). 금액·기간 등 핵심 수치는 살리세요.
+- 각 항목 25자 이내, 한 줄. 금액·기간 등 핵심 수치는 살리세요.
 - 원문에 있는 사실만 쓰고 지어내지 마세요. 정보가 없으면 빈 문자열.
 - 행정 군더더기(사업 근거·법령 조항 등)는 빼고 실제 혜택/대상만 남기세요.
-- 반드시 JSON 배열만 반환: [{"idx": 0, "support": "...", "target": "..."}, ...]"""
-
-
-def _strip_code_fence(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    if text.endswith("```"):
-        text = text.rsplit("```", 1)[0]
-    return text.strip()
+- 입력으로 받은 모든 정책을 idx 그대로 매겨 빠짐없이 반환하세요."""
 
 
 async def _summarize_compare_cells(policies: list[dict]) -> dict[str, dict[str, str]]:
@@ -239,31 +259,25 @@ async def _summarize_compare_cells(policies: list[dict]) -> dict[str, dict[str, 
         })
 
     try:
-        result = await _summary_model.ainvoke([
+        result = cast(_CellSummaries, await _summary_model.ainvoke([
             SystemMessage(content=_CELL_SUMMARY_SYSTEM_PROMPT),
             HumanMessage(content=json.dumps(items, ensure_ascii=False)),
-        ])
-        parsed = json.loads(_strip_code_fence(str(result.content)))
-        if not isinstance(parsed, list):
-            raise ValueError("응답이 배열이 아님")
+        ]))
     except Exception:
         logger.exception("비교 표 셀 요약 실패 — 원문 폴백")
         return {}
 
     overrides: dict[str, dict[str, str]] = {}
-    for entry in parsed:
-        if not isinstance(entry, dict):
-            continue
-        idx = entry.get("idx")
-        if not isinstance(idx, int) or not (0 <= idx < len(rows)):
+    for entry in result.items:
+        if not (0 <= entry.idx < len(rows)):
             continue
         cell: dict[str, str] = {}
-        if entry.get("support"):
-            cell["plcySprtCn"] = str(entry["support"]).strip()
-        if entry.get("target"):
-            cell["ptcpPrpTrgtCn"] = str(entry["target"]).strip()
+        if entry.support.strip():
+            cell["plcySprtCn"] = entry.support.strip()
+        if entry.target.strip():
+            cell["ptcpPrpTrgtCn"] = entry.target.strip()
         if cell:
-            overrides[policy_key(rows[idx])] = cell
+            overrides[policy_key(rows[entry.idx])] = cell
     logger.info("비교 표 셀 요약 완료 — %d/%d건", len(overrides), len(rows))
     return overrides
 
@@ -296,6 +310,31 @@ async def composer_node(state: ShareState) -> dict:
         return {"final_response": body, "suggestions": suggestions}
 
     inquiry_types = state.get("inquiry_type") or []
+
+    # 상세조회 단독: 프론트가 policies 카드로 렌더하므로 composer는 짧은 안내 멘트만 생성한다.
+    if inquiry_types == ["상세조회"]:
+        # intro는 **실제로 검색된 대표 정책명**으로 결정적으로 만든다.
+        # (LLM에 맡기면 사용자가 말한 정책명을 그대로 받아써, DB에 없는 정책도 "찾은 척"하는
+        #  환각이 난다 — 예: "청년도약계좌" 요청에 무관한 재무상담만 검색됐는데도 청년도약계좌라 단정.)
+        primary_name = next(
+            (p["plcyNm"] for frag in fragments for p in frag.get("policies", []) if p.get("plcyNm")),
+            "",
+        )
+        commentary = await _generate_commentary(state, fragments, is_first_turn)
+        parts: list[str] = []
+        greeting = f"{_GREETING_TEMPLATE}\n\n" if is_first_turn else ""
+        if primary_name:
+            parts.append(f"{greeting}**{primary_name}**에 대한 자세한 정보를 알려드릴게요.")
+        elif commentary and commentary.intro.strip():
+            parts.append(f"{greeting}{commentary.intro.strip()}")
+        elif is_first_turn:
+            parts.append(_GREETING_TEMPLATE.rstrip())
+        # body_note(요약·주의사항)는 검색된 정책 범위에서만 — _build_body_brief가 설명을 함께 넘겨 근거를 고정.
+        if commentary and commentary.body_note.strip():
+            parts.append("")
+            parts.append(commentary.body_note.strip())
+        final_response = "\n".join(parts).rstrip() + "\n" if parts else ""
+        return {"final_response": final_response, "suggestions": suggestions}
 
     # 비교 의도 → 분야 fragment를 쌓는 대신 raw 정책 메타로 통합 비교 표를 결정적으로 조립.
     # (주거+일자리처럼 분야가 섞여도 하나의 표로 나란히 비교. 정책 2개 미만이면 일반 분기로 폴백.)

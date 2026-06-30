@@ -153,9 +153,10 @@ if __name__ == "__main__":
         # reload=False일 경우: app을 제공할 수 있음
         # reload=True 일 경우: "main:app"과 같이 문자열로 제공해야 함
         # main 모듈을 찾아 app을 재시작해야 하므로 모듈 이름이 필요
-        "main:app",         
+        "main:app",
         host="localhost",   # 0.0.0.0은 모든 네트워크 인터페이스에서 접근 가능
-        port=80,            # 서버가 실행될 포트 번호     
+        port=80,            # 서버가 실행될 포트 번호
         reload=True,        # 코드 변경 시 자동으로 서버를 재시작
+        reload_dirs=["api", "main.py"],  # api/ 와 main.py 만 감시 (__pycache__ 등 제외)
         access_log=True,    # HTTP 요청/응답 접근 로그 활성화
     )
