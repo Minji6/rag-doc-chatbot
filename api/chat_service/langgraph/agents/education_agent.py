@@ -6,6 +6,7 @@ from fastapi import Depends
 from langchain.agents import create_agent
 from langchain.tools import tool
 from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE
+from ..tools.dday import calculate_dday
 from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
 logger = logging.getLogger(__name__)
@@ -205,7 +206,7 @@ def classify_training_coverage(policy_name: str, policy_content: str) -> str:
     return "\n".join(lines)
 
 
-_TOOLS = [estimate_income_grade, filter_by_gpa, classify_training_coverage]
+_TOOLS = [estimate_income_grade, filter_by_gpa, classify_training_coverage, calculate_dday]
 
 #----------------------------------------------
 # inquiry_type별 system_prompt
@@ -219,6 +220,7 @@ _SYSTEM_PROMPTS = {
 - estimate_income_grade: 소득분위 추정이 필요할 때 호출. [사용자 정보]에 월소득(earncndsecd)이 있으면 그 값을 monthly_income으로 사용하고, 가구원 수(family_size)는 사용자에게 물어보세요
 - filter_by_gpa: 사용자가 학점을 언급할 때 호출 — 학점 미달로 추천 불가한 정책을 감지하여 제외하세요. 반환 목록에 없는 정책은 그대로 추천하세요
 - classify_training_coverage: 훈련비 지원 여부(급여/비급여) 분류 요청 시
+- calculate_dday: 사용자가 마감일을 물을 때 호출. deadline에 bizPrdEndYmd, apply_period_type에 aplyPrdSeCd 값을 사용하세요. [정책 구조화 데이터]의 dday 필드가 있으면 정책 안내 시 함께 표시하세요
 
 # 답변 형식 (인사말·맺음말 없이 곧바로 아래 본문부터)
 정책마다 아래 ### 블록을 반복하세요.
@@ -228,6 +230,7 @@ _SYSTEM_PROMPTS = {
 - 지원 내용: 지원 유형별 세부 내용 / 지원 금액·범위
 - 참여 자격: 기본 요건 / 성적·소득 조건 / 전공·학과 제한 여부
 - 신청 방법: 신청 기간·경로 확인 → 필수 서류 준비 → 대학(기관) 추천 또는 직접 신청 → 자격 심사 및 선정
+- 신청기간: [정책 구조화 데이터]의 dday 값을 그대로 표시 (예: D-150, 마감, 상시접수)
 - 신청 URL: 정책 정보의 "신청 URL" 값을 raw URL 그대로 (없으면 "정보 없음")
 
 [필수 확인사항]
@@ -247,6 +250,7 @@ _SYSTEM_PROMPTS = {
 - estimate_income_grade: 소득분위 추정이 필요할 때 호출. [사용자 정보]에 월소득(earncndsecd)이 있으면 그 값을 monthly_income으로 사용하고, 가구원 수(family_size)는 사용자에게 물어보세요
 - filter_by_gpa: 사용자 학점으로 신청 가능한 정책만 필터링하여 추천
 - classify_training_coverage: 훈련비 지원 여부를 확인해 추천 근거로 활용
+- calculate_dday: 사용자가 마감일을 물을 때 호출. deadline에 bizPrdEndYmd, apply_period_type에 aplyPrdSeCd 값을 사용하세요. [정책 구조화 데이터]의 dday 필드가 있으면 정책 안내 시 함께 표시하세요
 
 # 답변 형식 (인사말·맺음말 없이 곧바로 아래 본문부터)
 추천 정책마다 아래 ### 블록을 반복하세요.
@@ -254,6 +258,7 @@ _SYSTEM_PROMPTS = {
 ### [정책명]
 - 추천 이유: (사용자 상황과 연결된 이유)
 - 지원 내용 요약
+- 신청기간: [정책 구조화 데이터]의 dday 값을 그대로 표시 (예: D-150, 마감, 상시접수)
 - 신청 URL: raw URL 그대로 (없으면 "정보 없음")
 
 [꼭 확인하세요]
@@ -271,6 +276,7 @@ _SYSTEM_PROMPTS = {
 - classify_training_coverage: 해당 정책이 급여/비급여 훈련인지 명시
 - estimate_income_grade: 소득 조건이 있을 때 사용자 소득분위 추정
 - filter_by_gpa: 학점 조건 확인 요청 시
+- calculate_dday: 사용자가 마감일을 물을 때 호출. deadline에 bizPrdEndYmd, apply_period_type에 aplyPrdSeCd 값을 사용하세요
 
 # 답변 형식 (인사말·맺음말 없이 곧바로 아래 본문부터)
 
@@ -294,6 +300,7 @@ _SYSTEM_PROMPTS = {
 - classify_training_coverage: 급여/비급여 여부
 - filter_by_gpa: 학점 조건
 - estimate_income_grade: 소득분위 추정
+- calculate_dday: 마감일 D-day 계산
 
 인사말·맺음말·헤더 없이 곧바로 코멘트 문장만 출력하세요.""",
 }
@@ -314,6 +321,7 @@ class EducationAgent:
     - estimate_income_grade: 소득분위 추정 (2024 기준 중위소득)
     - filter_by_gpa: 학점 기준 장학금 필터
     - classify_training_coverage: 급여/비급여 훈련 분류
+    - calculate_dday: 신청 마감 D-day 계산 (공통 툴)
     """
 
     def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
@@ -354,6 +362,14 @@ class EducationAgent:
             tuple[str, list[str]]: (답변 텍스트, follow-up 질문 목록)
         """
         agent = self._agents.get(inquiry_type, self._agents["검색"])
+
+        # 정책별 D-day 사전 계산 — 에이전트가 dday 필드를 바로 참조할 수 있도록
+        if policies:
+            for policy in policies:
+                policy["dday"] = calculate_dday.invoke({
+                    "deadline": policy.get("bizPrdEndYmd") or "",
+                    "apply_period_type": policy.get("aplyPrdSeCd") or "",
+                })
 
         prompt = (
             "다음 정보를 바탕으로 교육 정책 답변을 작성하세요.\n\n"

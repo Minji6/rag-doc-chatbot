@@ -5,10 +5,13 @@
 - dday_label: 사람이 읽는 D-day 라벨 (정책 표/검색 결과 공통)
 - calculate_dday: LLM이 호출하는 @tool (welfare 등 에이전트가 import)
 """
+import logging
 import re
 from datetime import date
 
 from langchain.tools import tool
+
+logger = logging.getLogger(__name__)
 
 # YYYY.MM.DD / YYYY-MM-DD / YYYYMMDD 모두 매칭
 _DATE_RE = re.compile(r"(\d{4})[.\-]?(\d{2})[.\-]?(\d{2})")
@@ -75,6 +78,7 @@ def calculate_dday(deadline: str, apply_period_type: str) -> str:
     Returns:
         str: D-day 문자열 (예: "D-30", "상시접수", "마감", "오늘 마감")
     """
+    logger.info("calculate_dday 실행 — deadline=%s, apply_period_type=%s", deadline, apply_period_type)
     if (apply_period_type or "").strip() == "상시":
         return "상시접수"
     if not deadline:
