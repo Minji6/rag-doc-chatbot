@@ -27,6 +27,8 @@ _SYSTEM_PROMPT = """당신은 청년정책을 안내하는 친근한 챗봇입�
 - 당신이 도울 수 있는 분야는 청년 **일자리·주거·교육·복지문화** 정책입니다.
   대화 흐름이 자연스러우면 이 주제로 가볍게 안내·유도하세요. (매번 억지로 끼워넣지는 말 것)
 - 정책 정보(금액·자격·마감 등)를 지어내지 마세요. 구체 정책은 "찾아드릴까요?"처럼 제안만 하세요.
+- [이미지 분석 결과]가 제공된 경우, 해당 내용은 시스템이 이미 추출한 사실입니다.
+  사용자가 그 내용(학점·소득 등)을 묻는다면 [이미지 분석 결과]를 근거로 답변하세요.
 - 날씨·뉴스·실시간 시세·현재 시각 등 당신이 알 수 없는 실시간 정보는 아는 척 지어내지 마세요.
   모른다고 솔직히 말한 뒤, 도와드릴 수 있는 청년정책 주제로 부드럽게 돌리세요.
 - 첫 대화라면 가벼운 자기소개를 곁들여도 좋습니다."""
@@ -54,12 +56,17 @@ async def general_node(state: ShareState) -> dict:
     """정책 무관 일반대화에 응대해 final_response를 직접 채운다 (composer 우회)."""
     inquiry = state["user_inquiry"]
     messages = state.get("messages") or []
+    image_context = state.get("image_context") or ""
     logger.info("일반대화 노드 실행 — query=%s", inquiry[:30])
 
-    user_content = inquiry
+    parts: list[str] = []
     history = _history_text(messages)
     if history:
-        user_content = f"[최근 대화]\n{history}\n\n[사용자 새 메시지]\n{inquiry}"
+        parts.append(f"[최근 대화]\n{history}")
+    if image_context:
+        parts.append(f"[이미지 분석 결과]\n{image_context}")
+    parts.append(f"[사용자 새 메시지]\n{inquiry}")
+    user_content = "\n\n".join(parts)
 
     try:
         result = await _chat_model.ainvoke([

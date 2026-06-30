@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from api.chat_service.langgraph.supervisor import ChatbotSupervisorDep
 from api.chat_service.langgraph.constants import ROLE_USER
+from api.chat_service.langgraph.nodes.image_analysis_node import IMAGE_CONTEXT_MARKER
 from api.auth_service.service import UserServiceDep
 from api.common.sqlalchemy_conf import OrmSessionDep
 from api.history_service.agent_dependency import HistoryAgentByFormDep, build_thread_id
@@ -74,7 +75,14 @@ async def chat(
     # full_message는 의도 정형 전 전체 답변 — 상세조회처럼 응답 message를 비워도
     # 대화 맥락(후속질문 해소)은 보존되도록 히스토리엔 전체 답변을 저장한다.
     history_message = result.pop("full_message", "") or result["message"]
-    await agent.save_exchange(message, history_message, thread_id)
+    # image_context가 있으면 사용자 메시지에 포함해 저장한다.
+    # 후속 턴의 contextualize_node / general_node가 messages를 통해 이미지 분석 결과를 참조할 수 있도록.
+    image_context = result.pop("image_context", "") or ""
+    if image_context:
+        history_user_message = f"{message}\n\n{IMAGE_CONTEXT_MARKER}{image_context}"
+    else:
+        history_user_message = message
+    await agent.save_exchange(history_user_message, history_message, thread_id)
     logger.info(f"[{thread_id}] 대화 저장 완료")
 
     return JSONResponse(content={

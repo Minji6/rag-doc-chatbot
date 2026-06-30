@@ -15,15 +15,50 @@ _SYSTEM_PROMPT = (
     "이미지에서 확인되는 정책명·지원 내용·신청 조건·날짜 등을 명시하세요."
 )
 
+# controller.py가 image_context를 사용자 메시지에 저장할 때 사용하는 구분자.
+# 이 노드에서 복원 시 동일한 값으로 파싱한다.
+IMAGE_CONTEXT_MARKER = "[이미지 분석 결과]\n"
+
+
+def _restore_from_history(messages: list) -> str:
+    """이전 대화 기록에서 이미지 분석 결과를 복원한다.
+
+    controller.py는 이미지가 분석된 턴의 사용자 메시지를
+    '{원본 질문}\n\n[이미지 분석 결과]\n{image_context}' 형태로 저장한다.
+    이 함수는 해당 마커를 찾아 image_context 텍스트를 추출한다.
+
+    한 대화방에서 이미지를 여러 번 첨부한 경우, messages를 역순으로 순회하며
+    가장 최근(첫 히트)의 이미지 컨텍스트만 복원한다. 후속 질문은 직전에 올린
+    이미지를 가리키는 것이 자연스럽기 때문에, 이전 이미지 컨텍스트는 의도적으로 덮어쓴다.
+    """
+    for m in reversed(messages):
+        if isinstance(m, dict):
+            role = m.get("role") or m.get("type") or ""
+            content = str(m.get("content", ""))
+        else:
+            role = getattr(m, "type", "")
+            content = str(getattr(m, "content", ""))
+        if role in ("user", "human") and IMAGE_CONTEXT_MARKER in content:
+            idx = content.find(IMAGE_CONTEXT_MARKER)
+            extracted = content[idx + len(IMAGE_CONTEXT_MARKER):].strip()
+            if extracted:
+                logger.info("이전 대화에서 이미지 컨텍스트 복원 — %d자", len(extracted))
+                return extracted
+    return ""
+
 
 async def image_analysis_node(state: ShareState) -> dict:
     """이미지를 GPT-4o Vision으로 분석해 텍스트 컨텍스트로 변환한다.
 
-    이미지가 없으면 즉시 빈 문자열을 반환하므로 이미지 없는 요청에서도 비용이 발생하지 않는다.
+    - 이미지가 첨부된 경우: Vision API로 분석 후 image_context를 state에 저장.
+    - 이미지가 없는 경우: 이전 대화 기록에서 image_context를 복원.
+      이미지 관련 책임을 이 노드가 전담하므로, 하위 노드들은 state의
+      image_context만 신뢰하면 된다.
     """
     image_base64 = state.get("image_base64")
     if not image_base64:
-        return {"image_context": ""}
+        restored = _restore_from_history(state.get("messages") or [])
+        return {"image_context": restored}
 
     content_type = state.get("image_content_type") or "image/jpeg"
     logger.info("이미지 분석 노드 실행 — mime_type=%s", content_type)

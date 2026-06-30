@@ -56,6 +56,9 @@ _SYSTEM_PROMPT = """당신은 청년정책 챗봇의 대화 맥락 분석기입�
    - "두번째 정책 알려줘", "그거 자세히", "방금 거랑 비교" 같은 표현의 지시대상을
      [직전 정책] 목록에서 찾아 **구체 정책명**으로 바꿔 쓰세요.
    - 맥락이 필요 없는 완전히 새로운 질문이면 원문을 거의 그대로 두세요.
+   - [첨부 이미지 분석 결과]가 있을 때, 사용자가 그 안의 수치(학점·소득 등)를 묻는 질문
+     ("내 학점이 몇이야?", "내 소득이 얼마야?" 등)은 **원문을 그대로** standalone_query로 쓰세요.
+     "어떻게 확인하나요?" 같은 방법 질문으로 바꾸지 마세요.
 2) referenced_indices: 사용자가 가리킨 [직전 정책]의 1-based 번호. 없으면 [].
    - "방금/위에서 알려준 것들", "아까 그거 전부", "다 비교해줘"처럼 직전 목록 **전체**를
      가리키면 [직전 정책]의 **모든 번호**를 담으세요. (일부만 임의로 고르지 말 것)
@@ -114,9 +117,12 @@ async def contextualize_node(state: ShareState) -> dict:
     if not messages and not last_policies:
         return {"resolved_policies": []}
 
+    image_context = (state.get("image_context") or "").strip()
+    image_hint = f"[첨부 이미지 분석 결과]\n{image_context[:300]}\n\n" if image_context else ""
     user_content = (
         f"[직전 정책]\n{_format_last_policies(last_policies) or '(없음)'}\n\n"
         f"[최근 대화]\n{_recent_messages_text(messages) or '(없음)'}\n\n"
+        f"{image_hint}"
         f"[사용자 새 메시지]\n{original}"
     )
 

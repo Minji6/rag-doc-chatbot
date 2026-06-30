@@ -240,6 +240,9 @@ class ChatbotSupervisor:
             # 대화기록 저장용 — 상세조회처럼 message를 비워도 맥락 보존을 위해 전체 답변을 따로 넘긴다.
             # 컨트롤러가 이 값으로 히스토리를 저장하고 프론트 응답에선 제외한다.
             "full_message": full_message,
+            # 이미지 분석 결과 — 컨트롤러가 대화 히스토리에 포함해 후속 턴에서 참조 가능하게 한다.
+            # 프론트 응답에서는 제외 (컨트롤러가 pop).
+            "image_context": final_state.get("image_context", ""),
         }
 
     def get_graph_image(self) -> bytes:
