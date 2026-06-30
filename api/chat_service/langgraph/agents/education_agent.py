@@ -6,7 +6,7 @@ from fastapi import Depends
 from langchain.agents import create_agent
 from langchain.tools import tool
 from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE
-from ..tools.dday import calculate_dday
+from ..tools.dday import calculate_dday, dday_label
 from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
 logger = logging.getLogger(__name__)
@@ -373,13 +373,16 @@ class EducationAgent:
         """
         agent = self._agents.get(inquiry_type, self._agents["검색"])
 
-        # 정책별 D-day 사전 계산 — 에이전트가 dday 필드를 바로 참조할 수 있도록
+        # 정책별 D-day 사전 계산 — 신청기간(aplyYmd)+사업종료일(bizPrdEndYmd)을 모두 보고
+        # 비교표·카드 뱃지와 동일한 dday_label로 계산해 어긋나지 않게 한다.
         if policies:
             for policy in policies:
-                policy["dday"] = calculate_dday.invoke({
-                    "deadline": policy.get("bizPrdEndYmd") or "",
-                    "apply_period_type": policy.get("aplyPrdSeCd") or "",
-                })
+                policy["dday"] = dday_label(
+                    policy.get("aplyPrdSeCd", ""),
+                    policy.get("aplyYmd", ""),
+                    policy.get("bizPrdEndYmd", ""),
+                    with_date=False,
+                )
 
         prompt = (
             "다음 정보를 바탕으로 교육 정책 답변을 작성하세요.\n\n"

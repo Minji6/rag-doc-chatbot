@@ -8,7 +8,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain.chat_models import init_chat_model
 from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
-from ..tools.dday import calculate_dday
+from ..tools.dday import calculate_dday, dday_label
 from ..tools.age import calc_age as _calc_age
 from ..tools.eligibility import check_eligibility_detailed  # type: ignore[attr-defined]
 from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
@@ -382,12 +382,15 @@ class WelfareAgent:
                 knowledge += f"\n\n[웹 검색 보완]\n{web_result}"
                 logger.info("웹 보완 완료")
 
-        # 모든 RAG 정책에 dday 주입
+        # 모든 RAG 정책에 dday 주입 — 신청기간(aplyYmd)+사업종료일(bizPrdEndYmd)을 모두 보고
+        # 비교표(_policy_table)·카드 뱃지와 동일한 dday_label로 계산해 어긋나지 않게 한다.
         for policy in policies:
-            policy["dday"] = calculate_dday.invoke({
-                "deadline": policy.get("bizPrdEndYmd") or "",
-                "apply_period_type": policy.get("aplyPrdSeCd") or "",
-            })
+            policy["dday"] = dday_label(
+                policy.get("aplyPrdSeCd", ""),
+                policy.get("aplyYmd", ""),
+                policy.get("bizPrdEndYmd", ""),
+                with_date=False,
+            )
 
         # role='user'일 때 대화에서 새 프로필 정보 추출 후 merge
         if user_role == "user":

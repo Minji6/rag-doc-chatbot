@@ -23,6 +23,7 @@ from .nodes.general_node import general_node
 from .nodes.image_analysis_node import image_analysis_node
 from .nodes.contextualize_node import contextualize_node
 from api.chat_service.policy_memory import get_last_policies, save_last_policies
+from .tools.dday import dday_label
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +216,19 @@ class ChatbotSupervisor:
                     if plcy_no:
                         seen.add(plcy_no)
                     policies.append(p)
+
+        # 카드 D-day 뱃지용 dday 필드를 4개 도메인 공통으로 일관되게 주입한다.
+        # (이전엔 welfare/education만 calculate_dday로 bizPrdEndYmd만 보고 주입해
+        #  주거·일자리는 뱃지가 안 뜨고, 신청기간(aplyYmd)을 무시해 대부분 "마감"으로 찍혔다.)
+        # 본문 비교표(_policy_table)와 동일하게 dday_label에 aplyYmd+bizPrdEndYmd를 모두 넘겨
+        # 표와 카드 뱃지의 D-day가 어긋나지 않도록 한다.
+        for p in policies:
+            p["dday"] = dday_label(
+                p.get("aplyPrdSeCd", ""),
+                p.get("aplyYmd", ""),
+                p.get("bizPrdEndYmd", ""),
+                with_date=False,
+            )
 
         # 이번 턴이 보여준 정책을 다음 후속질문 해소용으로 저장 (빈 결과면 내부에서 클리어).
         # 저장은 정형 전 policies로 — 추천 단독이라 응답에선 비워도 후속질문("두번째 거")은 해소돼야 한다.
