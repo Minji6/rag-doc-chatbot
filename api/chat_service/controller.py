@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from api.chat_service.langgraph.supervisor import ChatbotSupervisorDep
 from api.chat_service.langgraph.constants import ROLE_USER
+from api.chat_service.langgraph.nodes.image_analysis_node import IMAGE_CONTEXT_MARKER
 from api.auth_service.service import UserServiceDep
 from api.common.sqlalchemy_conf import OrmSessionDep
 from api.history_service.agent_dependency import HistoryAgentByFormDep, build_thread_id
@@ -78,7 +79,6 @@ async def chat(
     # 후속 턴의 contextualize_node / general_node가 messages를 통해 이미지 분석 결과를 참조할 수 있도록.
     image_context = result.pop("image_context", "") or ""
     if image_context:
-        from api.chat_service.langgraph.nodes.image_analysis_node import IMAGE_CONTEXT_MARKER
         history_user_message = f"{message}\n\n{IMAGE_CONTEXT_MARKER}{image_context}"
     else:
         history_user_message = message

@@ -26,6 +26,10 @@ def _restore_from_history(messages: list) -> str:
     controller.py는 이미지가 분석된 턴의 사용자 메시지를
     '{원본 질문}\n\n[이미지 분석 결과]\n{image_context}' 형태로 저장한다.
     이 함수는 해당 마커를 찾아 image_context 텍스트를 추출한다.
+
+    한 대화방에서 이미지를 여러 번 첨부한 경우, messages를 역순으로 순회하며
+    가장 최근(첫 히트)의 이미지 컨텍스트만 복원한다. 후속 질문은 직전에 올린
+    이미지를 가리키는 것이 자연스럽기 때문에, 이전 이미지 컨텍스트는 의도적으로 덮어쓴다.
     """
     for m in reversed(messages):
         if isinstance(m, dict):

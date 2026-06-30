@@ -54,7 +54,7 @@ async def general_node(state: ShareState) -> dict:
     """정책 무관 일반대화에 응대해 final_response를 직접 채운다 (composer 우회)."""
     inquiry = state["user_inquiry"]
     messages = state.get("messages") or []
-    image_context = state.get("image_context", "")
+    image_context = state.get("image_context") or ""
     logger.info("일반대화 노드 실행 — query=%s", inquiry[:30])
 
     parts: list[str] = []
