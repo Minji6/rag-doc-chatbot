@@ -24,6 +24,7 @@ async def housing_node(state: ShareState) -> dict:
     text, suggestions = await agent.run(
         inquiry=inquiry,
         knowledge=knowledge,
+        policies=policies,
         user_profile=state.get("user_profile"),
         inquiry_type=agent_mode(state.get("inquiry_type", [])),
     )
