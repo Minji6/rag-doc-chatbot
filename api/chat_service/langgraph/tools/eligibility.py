@@ -53,12 +53,9 @@ def _check_age(meta: dict, age: int | None) -> tuple[Verdict, str]:
 def _check_region(meta: dict, user_region: str | None) -> tuple[Verdict, str]:
     region_code = meta.get("zipCd") or ""
 
-    # "전국"인 경우 → eligible
-    if "전국" in region_code:
-        return "eligible", "지역 ✓ (전국)"
-    # 데이터가 빈 값 → unknown
+    # 빈 값 → 지역 제한 없음 (전국 허용)
     if not region_code:
-        return "unknown", "지역 요건: 정책 데이터 부족"
+        return "eligible", "지역 ✓ (제한없음)"
     # 사용자가 빈 값 → unknown
     if not user_region:
         return "unknown", "지역: 사용자 거주지 정보 없음"
@@ -111,12 +108,12 @@ def _check_income(meta: dict, user_income: str | None) -> tuple[Verdict, str]:
         if int(user_income) <= int(max_income_str):
             return "eligible", f"소득 ✓ ({user_income}분위 ≤ {max_income_str}분위)"
         return "ineligible", f"소득 ✗ ({user_income}분위 > {max_income_str}분위)"
-    except ValueError:
+    except (ValueError, TypeError):
         return "unknown", "소득 조건 확인 불가"
 
 
 def _check_school(meta: dict, user_school: str | None) -> tuple[Verdict, str]:
-    policy_school = (meta.get("schoolcd") or "제한없음").strip()
+    policy_school = (meta.get("schoolCd") or "제한없음").strip()
     if not policy_school or policy_school == "제한없음":
         return "eligible", "학력 ✓ (제한없음)"
     if not user_school:
@@ -158,19 +155,11 @@ def format_verdict_line(result: EligibilityResult) -> str:
         "ineligible": "❌ 자격 미충족",
         "unknown":    "❓ 자격 확인 필요",
     }[result["verdict"]]
-    return f"{icon} — {' | '.join(result['reasons'])}"
+    return f"{icon} (나이·지역·혼인 기준) — {' | '.join(result['reasons'])}"
 
 
 # 검색 결과 정렬 우선순위: eligible → unknown → ineligible
-_VERDICT_ORDER = {"eligible": 0, "unknown": 1, "ineligible": 2}
-
-
-def eligibility_sort_key(metadata: dict, user_profile: dict | None) -> int:
-    """검색 결과 정렬 키. 게스트(None)는 2를 반환해 검색 순서를 유지한다(안정 정렬)."""
-    result = check_policy_eligibility(metadata, user_profile)
-    if result is None:
-        return 2
-    return _VERDICT_ORDER[result["verdict"]]
+VERDICT_ORDER = {"eligible": 0, "unknown": 1, "ineligible": 2}
 
 
 @tool

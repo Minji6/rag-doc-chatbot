@@ -3,7 +3,7 @@ from datetime import date
 from ..state import ShareState
 from ..tools.dday import end_date_from
 from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
-from ..tools.eligibility import check_policy_eligibility, format_verdict_line, eligibility_sort_key
+from ..tools.eligibility import check_policy_eligibility, format_verdict_line, VERDICT_ORDER
 from ..constants import AGENT_CATEGORY, EMPLOYMENT_SIMILARITY_THRESHOLD, resolve_search_k, EMPLOYMENT_SEARCH_OVERSAMPLE
 
 logger = logging.getLogger(__name__)
@@ -68,29 +68,30 @@ async def employment_search_node(state: ShareState) -> dict:
             continue
         documents_with_dday.append((doc, dist, label))
 
-    # 자격 진단 기준으로 정렬: eligible → unknown → ineligible (게스트는 검색 순서 유지)
-    documents_with_dday.sort(key=lambda item: eligibility_sort_key(item[0].metadata, user_profile))
+    # eligibility를 한 번만 계산해 정렬·라벨 모두 재사용
+    docs_with_elig: list[tuple] = [
+        (doc, dist, label, check_policy_eligibility(doc.metadata, user_profile))
+        for doc, dist, label in documents_with_dday
+    ]
+    docs_with_elig.sort(key=lambda item: VERDICT_ORDER[item[3]["verdict"]] if item[3] else 2)
+    docs_with_elig = docs_with_elig[:k]  # 출력은 공통 k개로 제한
 
-    documents_with_dday = documents_with_dday[:k]  # 출력은 공통 k개로 제한
-
-    if not documents_with_dday:
+    if not docs_with_elig:
         logger.info("취업 정책 검색 결과 없음")
         return {
             "domain_knowledge": {"employment": ""},
             "domain_policies": {"employment": []},
         }
 
-    policies = [_pick_policy_fields(doc.metadata) for doc, _, _ in documents_with_dday]
+    policies = [_pick_policy_fields(doc.metadata) for doc, _, _, _ in docs_with_elig]
 
     lines = []
-    for idx, (doc, _dist, dday) in enumerate(documents_with_dday, 1):
+    for idx, (doc, _dist, dday, eligibility) in enumerate(docs_with_elig, 1):
         lines.append(f"[정책 {idx}] {doc.metadata.get('plcyNm', '')}")
         lines.append(f"내용: {doc.page_content}")
         if dday:
             lines.append(f"신청기간: {dday}")
 
-        # 자격 진단 라벨 (로그인 유저만, 게스트는 None 반환되어 스킵)
-        eligibility = check_policy_eligibility(doc.metadata, user_profile)
         if eligibility is not None:
             lines.append(format_verdict_line(eligibility))
 

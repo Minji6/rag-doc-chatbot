@@ -2,11 +2,7 @@ import logging
 from ..state import ShareState
 from ..constants import AGENT_CATEGORY, SIMILARITY_DISTANCE_THRESHOLD, resolve_search_k
 from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
-from ..tools.eligibility import (
-    check_policy_eligibility,
-    format_verdict_line,
-    eligibility_sort_key,
-)
+from ..tools.eligibility import check_policy_eligibility, format_verdict_line, VERDICT_ORDER
 
 # 로거 생성
 logger = logging.getLogger(__name__)
@@ -43,18 +39,20 @@ async def housing_search_node(state: ShareState) -> dict:
         logger.info("주거 정책 검색 결과 없음")
         return {"domain_knowledge": {"housing": ""}, "domain_policies": {"housing": []}}
 
-    # 자격 진단 결과 기준으로 정렬: eligible → unknown → ineligible (게스트는 검색 순서 유지)
-    documents.sort(key=lambda item: eligibility_sort_key(item[0].metadata, user_profile))
+    # eligibility를 한 번만 계산해 정렬·라벨 모두 재사용
+    docs_with_elig = [
+        (doc, dist, check_policy_eligibility(doc.metadata, user_profile))
+        for doc, dist in documents
+    ]
+    docs_with_elig.sort(key=lambda item: VERDICT_ORDER[item[2]["verdict"]] if item[2] else 2)
 
-    policies = [_pick_policy_fields(doc.metadata) for doc, _ in documents]
+    policies = [_pick_policy_fields(doc.metadata) for doc, _, _ in docs_with_elig]
 
     lines = []
-    for idx, (doc, _dist) in enumerate(documents, 1):
+    for idx, (doc, _dist, eligibility) in enumerate(docs_with_elig, 1):
         lines.append(f"[정책 {idx}] {doc.metadata.get('plcyNm', '')}")
         lines.append(f"내용: {doc.page_content}")
 
-        # 자격 진단 라벨 (로그인 유저만, 게스트는 None 반환되어 스킵)
-        eligibility = check_policy_eligibility(doc.metadata, user_profile)
         if eligibility is not None:
             lines.append(format_verdict_line(eligibility))
 
