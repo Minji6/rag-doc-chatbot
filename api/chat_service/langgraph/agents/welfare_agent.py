@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 from typing import Annotated, Literal
 from fastapi import Depends
 from langchain.agents import create_agent
@@ -10,7 +9,7 @@ from langchain.chat_models import init_chat_model
 from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
 from ..tools.dday import calculate_dday
 from ..tools.age import calc_age as _calc_age
-from ..tools.eligibility import check_eligibility_detailed  # type: ignore[attr-defined]
+from ..tools.eligibility import check_eligibility_detailed, is_eligibility_inquiry  # type: ignore[attr-defined]
 from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
 logger = logging.getLogger(__name__)
@@ -76,19 +75,13 @@ def _build_agent_history(messages: list) -> list[HumanMessage | AIMessage]:
     return result[-6:]
 
 
-_ELIGIBILITY_RE = re.compile(
-    r"자격[이가]?\s*(돼|됩|되[나요]?)|신청\s*(가능|할\s*수)|해당\s*(돼|됩|되[나요]?)|대상이"
-)
-
-
-def _is_eligibility_inquiry(inquiry: str) -> bool:
-    return bool(_ELIGIBILITY_RE.search(inquiry))
+_is_eligibility_inquiry = is_eligibility_inquiry
 
 
 def _build_eligibility_prompt(policies: list[dict], user_profile: dict) -> str:
-    """모든 RAG 정책에 대해 자격 판정하고 LLM 프롬프트에 삽입할 텍스트 반환."""
+    """모든 RAG 정책에 대해 자격 판정(6가지)하고 LLM 프롬프트에 삽입할 텍스트 반환."""
     result_lines = [
-        "[자격 판정 결과 — 각 정책 ### 블록 마지막에 ⚠️/❌ 항목만 추가하세요. ✅만 있으면 생략]",
+        "[자격 판정 결과 — 각 정책 ### 블록의 '자격 검증 결과' 항목에 아래 항목을 모두 표시하세요]",
         "(check_eligibility_detailed 재호출 불필요 — 이미 계산된 결과입니다)",
     ]
     has_any = False
@@ -100,14 +93,14 @@ def _build_eligibility_prompt(policies: list[dict], user_profile: dict) -> str:
             "user_profile": user_profile,
             "policy_metadata": policy,
         })
-        bad_items = [
+        all_items = [
             line.strip()
             for line in raw.splitlines()
-            if line.strip().startswith("⚠️ ") or line.strip().startswith("❌ ")
+            if line.strip().startswith("✅ ") or line.strip().startswith("⚠️ ") or line.strip().startswith("❌ ")
         ]
-        if bad_items:
+        if all_items:
             result_lines.append(f"\n[{name}]")
-            for item in bad_items:
+            for item in all_items:
                 result_lines.append(f"  - {item}")
             has_any = True
     return "\n".join(result_lines) if has_any else ""
@@ -231,16 +224,21 @@ _TOOL_PRIORITY_RULE = """[도구 사용 규칙 — 최우선, 아래 출력 형�
 
 [자격 판정 결과 처리 — 반드시 준수]
 프롬프트에 [자격 판정 결과] 섹션이 있으면:
-- 각 정책 이름과 매칭되는 ⚠️/❌ 항목만 해당 정책 ### 블록의 **마지막 줄**에 아래 형식으로 추가하세요.
-- ✅ 항목은 표시하지 마세요.
+- 해당 정책의 항목들을 ### 블록의 '자격 검증 결과' 필드에 **그대로 복사해서** 붙여넣으세요.
+- ✅ 항목도 반드시 포함하세요. ✅를 생략하거나 ❌/⚠️만 표시하는 것은 절대 금지입니다.
+- 연령·지역·혼인·취업·소득·학력 6개 항목이 모두 출력되어야 합니다.
 
-출력 형식 예시:
-  - ⚠️ 지역: 사용자 거주지 정보 없음
-  - ❌ 연령 ✗ (만 25세, 최대 24세 이하)
+출력 형식 예시 (이 형식 그대로):
+- 자격 검증 결과:
+  - ✅ 연령 ✓ (만 25세, 요건 19~34세)
+  - ❌ 지역 ✗ (요건 인천광역시 / 거주지: 경기도)
+  - ✅ 혼인 ✓ (제한없음)
+  - ✅ 취업 ✓ (제한없음)
+  - ✅ 소득 ✓ (제한없음)
+  - ✅ 학력 ✓ (제한없음)
 
 규칙:
 - 별도 ### 자격 판정 결과 블록을 만들지 마세요.
-- 해당 정책의 모든 항목이 ✅이면 자격 관련 필드를 추가하지 마세요.
 - ✅/❌/⚠️ 결과와 무관하게 모든 정책을 ### 블록으로 출력하세요.
 
 """
@@ -249,11 +247,6 @@ _SYSTEM_PROMPT = """당신은 청년 복지문화 정책 전문가입니다.
 제공된 [정책 정보]에만 근거하여 답변하세요. 정보에 없는 정책이나 수치를 임의로 만들어내지 마세요.
 
 ## 도구 사용 규칙
-
-### check_eligibility_detailed (로그인 사용자 자격 확인 요청 시)
-- 프롬프트에 [자격 판정 결과] 섹션이 없고, 사용자가 자격 여부를 물을 때만 호출하세요.
-- **[정책 구조화 데이터]에 있는 RAG 정책에만 사용하세요.** [웹 검색 보완] 결과에는 사용하지 마세요.
-- user_profile에 [사용자 프로필] 값을, policy_metadata에 해당 정책 딕셔너리를 전달하세요.
 
 ### calculate_dday (마감일 관련 질문 시)
 - 사용자가 마감일을 물을 때 호출하세요.
@@ -274,6 +267,7 @@ _SYSTEM_PROMPT = """당신은 청년 복지문화 정책 전문가입니다.
 - 참여 자격: 연령/소득/취업/지역/학력 등 조건
 - 신청 방법: 신청 기간, 경로, 절차 요약
 - 신청 URL: 제공된 URL (없으면 "정보 없음")
+- 자격 검증 결과: [자격 판정 결과] 섹션에서 이 정책에 해당하는 항목 6개를 그대로 복사 (섹션이 없으면 이 필드 생략)
 
 (정책이 여러 개면 위 ### 블록을 정책 수만큼 반복)
 
@@ -385,9 +379,9 @@ class WelfareAgent:
         # 웹 전체 대체 시 구조화 데이터 없음 (형식 불일치) — RAG 정책만 전달
         rag_policies = [] if web_searched else policies
 
-        # 자격 관련 질문이면 모든 RAG 정책에 대해 사전 판정 (로그인 사용자만)
+        # 로그인 사용자는 항상 모든 RAG 정책에 대해 자격 사전 판정 6가지 (게스트 제외)
         eligibility_prompt = ""
-        if user_role == "user" and rag_policies and user_profile and _is_eligibility_inquiry(inquiry):
+        if user_role == "user" and rag_policies and user_profile:
             eligibility_prompt = _build_eligibility_prompt(rag_policies, user_profile)
             if eligibility_prompt:
                 logger.info("자격 사전 판정 완료 — %d건", len(rag_policies))
@@ -410,8 +404,8 @@ class WelfareAgent:
         # 비교 모드: 정형 표는 composer 담당. 에이전트는 복지 관점 코멘트만.
         if inquiry_type == "비교":
             prompt += COMPARISON_COMMENT_GUIDE
-        # 상세조회: 특정 정책 1개 깊이 안내.
-        elif inquiry_type == "상세조회":
+        # 상세조회: 특정 정책 1개 깊이 안내. 단, 자격 확인 질문이면 자격 판정 결과가 우선.
+        elif inquiry_type == "상세조회" and not _is_eligibility_inquiry(inquiry):
             prompt += OUTPUT_DETAIL_GUIDE
 
         prompt += SUGGESTIONS_PROMPT
