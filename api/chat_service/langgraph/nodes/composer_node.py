@@ -149,23 +149,39 @@ _commentary_model = init_chat_model(
 ).with_structured_output(_Commentary)
 
 
+_POLICY_HEADER_RE = re.compile(r"^### (.+)$", re.MULTILINE)
+
+
+def _displayed_policy_names(text: str) -> list[str]:
+    """본문에 실제로 등장하는 '### 정책명' 헤더만 추출한다.
+
+    frag["policies"](검색 후보 전체)와 달리, 자격 미충족 등으로 에이전트가 본문에서
+    제외한 정책은 여기 안 잡힌다 — 멘트가 말할 건수의 유일한 근거여야 한다.
+    """
+    return [m.strip() for m in _POLICY_HEADER_RE.findall(text or "")]
+
+
 def _build_body_brief(fragments: list[DomainResult]) -> str:
-    """LLM 멘트 생성용으로 본문에 담긴 분야·정책명(+짧은 설명)을 요약한다 (사실 범위 고정).
+    """LLM 멘트 생성용으로 본문에 '실제로 표시된' 분야·정책명(+짧은 설명)·건수를 요약한다.
 
     정책명만 주면 LLM이 자기 학습 지식으로 빈칸을 메워(예: 사용자가 댄 유명 정책명) 검색되지
     않은 내용을 지어낸다. 실제 검색된 정책의 설명을 함께 넘겨 멘트가 그 범위를 벗어나지 않게 한다.
+
+    건수는 frag["policies"](검색 후보 수, 예: 5건)가 아니라 본문에 실제로 ### 블록으로
+    등장한 수(예: 자격 미충족으로 걸러진 뒤 2건)를 기준으로 삼는다 — 안 그러면 멘트가
+    "5건 찾았어요"처럼 실제 표시 건수와 다른 숫자를 말하는 환각이 난다.
     """
     lines: list[str] = []
     for frag in fragments:
+        names_in_text = _displayed_policy_names(frag.get("text", ""))
+        by_name = {p.get("plcyNm", ""): p for p in frag.get("policies", []) if p.get("plcyNm")}
         items: list[str] = []
-        for p in frag.get("policies", []):
-            nm = p.get("plcyNm", "")
-            if not nm:
-                continue
+        for nm in names_in_text:
+            p = by_name.get(nm, {})
             expl = str(p.get("plcyExplnCn") or p.get("plcySprtCn") or "").replace("\n", " ").strip()
             items.append(f"{nm}({expl[:50]}…)" if expl else nm)
         names_txt = ", ".join(items) if items else "(정책명 없음)"
-        lines.append(f"- {frag.get('category', '')}: {names_txt}")
+        lines.append(f"- {frag.get('category', '')} (실제 표시 {len(items)}건): {names_txt}")
     return "\n".join(lines)
 
 
@@ -202,6 +218,8 @@ _COMMENTARY_SYSTEM_PROMPT = """당신은 청년정책 챗봇의 답변 편집자
 원칙:
 - 따뜻하고 간결한 한국어. 과장·영업 문구 금지.
 - [답변 본문에 포함된 정책]에 적힌 정책명·분야 범위 안에서만 말하세요. 금액·자격·마감 등 구체 수치를 새로 지어내지 마세요.
+- 건수를 언급할 때는 [답변 본문에 포함된 정책]의 각 줄에 적힌 "(실제 표시 N건)" 숫자만 사용하세요.
+  자격 미충족 등으로 본문에서 빠진 정책은 세지 마세요 — 검색 후보 수가 아니라 사용자에게 실제로 보여지는 정책 수입니다.
 - 의도가 '검색'이면 intro에서 사용자가 무엇을 물었는지·왜 그 정책들을 찾았는지(질문 키워드나 사용자 상황과 연결)와 몇 건을 찾았는지 언급하세요.
   body_note에는 찾은 정책들 사이의 공통점이나 눈여겨볼 특징을 2~3문장으로 짚어주세요(단순 "찾아봤어요" 한 줄로 끝내지 말 것).
 - 의도가 '추천'이면 intro에서 사용자 질문/프로필의 어떤 점을 보고 이 정책들을 골랐는지 밝히고,
