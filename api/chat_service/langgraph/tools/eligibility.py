@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # 자격 확인 질문 감지 — welfare_agent / welfare_search_node 공유
 ELIGIBILITY_RE = re.compile(
-    r"(자격|조건|대상|신청)\s*(이|가)?\s*(돼|됩|되나요|맞아|맞나요)?"
+    r"(자격|조건|대상)\s*(이|가)?\s*(돼|됩|되나요|맞아|맞나요)"
     r"|신청\s*(가능|할\s*수)"
     r"|지원\s*(가능|돼|되나요)"
     r"|받을\s*수\s*있"
