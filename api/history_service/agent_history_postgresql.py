@@ -62,12 +62,15 @@ class HistoryPostgreSQLAgent:
             }
 
         # 에이전트 상태에서 지난 과거 대화 내용이 있는 경우
+        # AI 메시지는 additional_kwargs에 실어둔 구조화 메타(category/inquiry_type/
+        # policies/suggestions)도 함께 복원한다 — 정책 뱃지·상세조회 카드가
+        # 새로고침 후에도 유지되려면 텍스트만으로는 부족하다.
         messages = []
         for msg in state.values["messages"]:
-            messages.append({
-                "role": msg.type,
-                "content": msg.content
-            })
+            entry = {"role": msg.type, "content": msg.content}
+            if msg.type == "ai" and msg.additional_kwargs:
+                entry.update(msg.additional_kwargs)
+            messages.append(entry)
 
         return {
             "conversation_id": thread_id,
@@ -88,13 +91,15 @@ class HistoryPostgreSQLAgent:
         }
         
     # supervisor가 생성한 답변을 LLM 재호출 없이 checkpointer에 직접 저장
-    async def save_exchange(self, user_msg:str, ai_response: str, thread_id: str):
+    # ai_metadata: category/inquiry_type/policies/suggestions 등 구조화 응답 필드.
+    #              AIMessage.additional_kwargs에 실어 보내면 체크포인터가 함께 영속화한다.
+    async def save_exchange(self, user_msg:str, ai_response: str, thread_id: str, ai_metadata: dict | None = None):
         await self._initialize() # 비동기 초기화 함수
         await self.agent.aupdate_state( # type: ignore
             {"configurable": {"thread_id": thread_id}},
             {"messages": [
                 HumanMessage(content=user_msg),
-                AIMessage(content=ai_response)
+                AIMessage(content=ai_response, additional_kwargs=ai_metadata or {})
             ]},
             as_node="model",
         )

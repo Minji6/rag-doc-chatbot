@@ -82,7 +82,15 @@ async def chat(
         history_user_message = f"{message}\n\n{IMAGE_CONTEXT_MARKER}{image_context}"
     else:
         history_user_message = message
-    await agent.save_exchange(history_user_message, history_message, thread_id)
+    # 정책 뱃지(D-day)·상세조회 카드는 category/inquiry_type/policies/suggestions가 있어야
+    # 렌더링된다. 새로고침 후 get_history로 다시 불러올 때도 보이도록 AI 메시지에 함께 저장한다.
+    ai_metadata = {
+        "category":     result.get("category", []),
+        "inquiry_type": result.get("inquiry_type", ""),
+        "policies":     result.get("policies", []),
+        "suggestions":  result.get("suggestions", []),
+    }
+    await agent.save_exchange(history_user_message, history_message, thread_id, ai_metadata)
     logger.info(f"[{thread_id}] 대화 저장 완료")
 
     return JSONResponse(content={
