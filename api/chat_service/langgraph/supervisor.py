@@ -22,6 +22,8 @@ from .nodes.composer_node import composer_node
 from .nodes.general_node import general_node
 from .nodes.image_analysis_node import image_analysis_node
 from .nodes.contextualize_node import contextualize_node
+from .tools.eligibility import build_eligibility_report
+from .constants import AGENT_CATEGORY
 from api.chat_service.policy_memory import get_last_policies, save_last_policies
 
 logger = logging.getLogger(__name__)
@@ -230,6 +232,15 @@ class ChatbotSupervisor:
         # PolicyCard는 이 필드를 우선 사용하고, PolicyDetailModal은 원문(plcySprtCn)을 유지한다.
         if set(inquiry_types) == {"상세조회"} and policies:
             policies = await _enrich_policies_support(policies)
+            # 복지문화 상세조회 + 로그인 시에만 자격 검증 결과(구조화)를 정책에 첨부한다.
+            # 프론트 상세 모달의 '자격 검증' 섹션이 policy.eligibility를 렌더한다.
+            # resolved_policies 경로도 최종 policies 기준으로 처리해 누락 없이 붙인다.
+            if user_profile:
+                for policy in policies:
+                    if policy.get("category") == AGENT_CATEGORY["welfare"]:
+                        report = build_eligibility_report(user_profile, policy)
+                        if report:
+                            policy["eligibility"] = report
 
         return {
             "message": message,

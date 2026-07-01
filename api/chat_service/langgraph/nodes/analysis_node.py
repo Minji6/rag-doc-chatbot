@@ -1,11 +1,22 @@
 import logging
+import re
 from typing import Annotated, cast
 from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
 from ..state import ShareState
 from ..constants import CATEGORIES, INQUIRY_TYPES
+from ..tools.eligibility import is_eligibility_inquiry
 
 logger = logging.getLogger(__name__)
+
+# 추천/검색(목록 요청) 의도를 드러내는 단어 — 자격질문 보정에서 제외하기 위한 안전장치.
+# ("받을 수 있는 정책 추천해줘"처럼 자격 표현이 섞여도 목록 요청이면 상세조회로 강제하지 않음)
+_RECOMMEND_LIST_RE = re.compile(r"추천|알려줘|찾아|뭐\s*있|어떤\s*(게|거|것)|목록|리스트")
+
+
+def _is_specific_eligibility(inquiry: str) -> bool:
+    """특정 정책의 신청 가능/자격 여부만 묻는(목록 요청 아님) 질문인지 판정."""
+    return is_eligibility_inquiry(inquiry) and not _RECOMMEND_LIST_RE.search(inquiry)
 
 
 class InquiryAnalysis(BaseModel):
@@ -84,6 +95,9 @@ _SYSTEM_PROMPT = f"""당신은 청년정책 챗봇의 의도 분석기입니다.
 - 상세조회: **특정 정책 1개를 고유 명칭으로 콕 집어** 그 정책의 세부(자격·금액·절차 등)를 물을 때만.
   예: "청년도약계좌 자세히 알려줘", "행복주택 신청조건이 뭐야?" → ["상세조회"]
   ※ 분야·키워드 수준의 "~정책 알려줘"는 상세조회가 아니라 **검색**이다.
+  ※ **특정 정책에 대해 본인의 신청 가능 여부·자격 여부를 묻는 질문은 모두 상세조회다.** 절대 추천으로 분류하지 말 것.
+    예: "내가 이 정책 신청할 자격이 돼?", "신청할 수 있어?", "받을 수 있어?", "대상이야?",
+        "자격이 되나?", "이 정책 지원 가능한가?" → ["상세조회"]
 - 비교: 둘 이상 정책의 차이를 묻거나 "비교해줘".
 - "추천하고 비교해줘"처럼 둘 이상이면 모두 담는다 (예: ["추천", "비교"]).
 
@@ -126,6 +140,13 @@ async def analysis_node(state: ShareState) -> dict:
         categories = analysis.category or []
 
     inquiry_types = analysis.inquiry_type or []
+
+    # 결정적 보정 — 특정 정책의 자격 여부 질문("신청할 수 있어?", "자격 돼?")은
+    # LLM이 간혹 '추천'으로 흘리므로, 목록 요청이 아닌 자격질문이면 상세조회로 확정한다.
+    if not is_general and _is_specific_eligibility(state["user_inquiry"]) and "상세조회" not in inquiry_types:
+        logger.info("자격 여부 질문 감지 — inquiry_type을 상세조회로 보정 (원본=%s)", inquiry_types)
+        inquiry_types = ["상세조회"]
+
     logger.info(
         "분류 결과 — is_general=%s, category=%s, inquiry_type=%s, requested_count=%s",
         is_general, categories, inquiry_types, analysis.requested_count,
