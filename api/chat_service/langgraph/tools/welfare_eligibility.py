@@ -65,11 +65,10 @@ def _check_region(meta: dict, user_region: str | None) -> dict:
 
 
 def _check_marriage(meta: dict, user_mrg: str | None) -> dict:
-    pol_mrg = meta.get("mrgSttsCd")
+    # 정책에 혼인 요건이 없으면(빈값) 제한없음으로 취급 — 취업/학력 검사와 동일한 규칙.
+    pol_mrg = (meta.get("mrgSttsCd") or "제한없음").strip()
     if pol_mrg == "제한없음":
         return _cond("혼인", "제한없음", user_mrg or "정보 없음", "met")
-    if not pol_mrg:
-        return _cond("혼인", "정보 없음", user_mrg or "정보 없음", "unknown")
     if not user_mrg:
         return _cond("혼인", pol_mrg, "정보 없음", "unknown")
     if user_mrg == pol_mrg:
@@ -123,7 +122,11 @@ def _check_income(meta: dict, user_income) -> dict:
     user_display = f"{user_manwon:,}만원" if user_manwon is not None else "정보 없음"
 
     cnd = (meta.get("earnCndSeCd") or "").strip()
-    # 무관/기타/빈값 → 소득 제한 없음
+    # 기타: 연소득 외 소득 조건(중위소득% 등, 텍스트로만 서술)이라 earnMin/Max로 수치 판정 불가
+    # → 제한없음으로 단정하면 false positive이므로 '확인 필요'(unknown) 처리.
+    if cnd == "기타":
+        return _cond("소득", "기타 소득 조건 (직접 확인)", user_display, "unknown")
+    # 무관/빈값 → 소득 제한 없음
     if cnd != "연소득":
         return _cond("소득", "제한없음", user_display, "met")
 
