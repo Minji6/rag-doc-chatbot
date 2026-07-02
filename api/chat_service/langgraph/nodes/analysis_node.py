@@ -142,10 +142,12 @@ async def analysis_node(state: ShareState) -> dict:
     inquiry_types = analysis.inquiry_type or []
 
     # 결정적 보정 — 특정 정책의 자격 여부 질문("신청할 수 있어?", "자격 돼?")은
-    # LLM이 간혹 '추천'으로 흘리므로, 목록 요청이 아닌 자격질문이면 상세조회로 확정한다.
+    # LLM이 간혹 '추천/검색'으로 흘리므로, 목록 요청이 아닌 자격질문이면 상세조회를 확정한다.
+    # 단 "행복주택 자격 돼? 청년버팀목이랑 비교도"처럼 함께 온 '비교' 의도는 보존한다
+    # (추천/검색은 특정 정책 자격질문에서 오분류이므로 버린다).
     if not is_general and _is_specific_eligibility(state["user_inquiry"]) and "상세조회" not in inquiry_types:
         logger.info("자격 여부 질문 감지 — inquiry_type을 상세조회로 보정 (원본=%s)", inquiry_types)
-        inquiry_types = ["상세조회"]
+        inquiry_types = (["비교"] if "비교" in inquiry_types else []) + ["상세조회"]
 
     logger.info(
         "분류 결과 — is_general=%s, category=%s, inquiry_type=%s, requested_count=%s",
