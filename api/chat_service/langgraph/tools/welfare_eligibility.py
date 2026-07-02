@@ -104,7 +104,7 @@ def _check_income(meta: dict, user_income: str | None) -> dict:
 
 
 def _check_school(meta: dict, user_school: str | None) -> dict:
-    policy_school = (meta.get("schoolCd") or "제한없음").strip()
+    policy_school = (meta.get("schoolcd") or "제한없음").strip()
     if not policy_school or policy_school == "제한없음":
         return _cond("학력", "제한없음", user_school or "정보 없음", "met")
     if not user_school:

@@ -131,7 +131,7 @@ def _check_income(meta: dict, user_income: str | None) -> tuple[Verdict, str]:
 
 
 def _check_school(meta: dict, user_school: str | None) -> tuple[Verdict, str]:
-    policy_school = (meta.get("schoolCd") or "제한없음").strip()
+    policy_school = (meta.get("schoolcd") or "제한없음").strip()
     if not policy_school or policy_school == "제한없음":
         return "eligible", "학력 ✓ (제한없음)"
     if not user_school:
