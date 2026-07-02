@@ -1,6 +1,11 @@
 import logging
 from ..state import ShareState
-from ..tools.policy_search import vectorstore as _vectorstore, pick_policy_fields as _pick_policy_fields
+from ..tools.policy_search import (
+    vectorstore as _vectorstore,
+    pick_policy_fields as _pick_policy_fields,
+    similarity_to_score as _similarity_to_score,
+    build_profile_query as _build_profile_query,
+)
 from ..tools.eligibility import check_policy_eligibility, format_verdict_line, VERDICT_ORDER
 from ..constants import (
     AGENT_CATEGORY,
@@ -13,36 +18,6 @@ from ..constants import (
 logger = logging.getLogger(__name__)
 
 _CATEGORY = AGENT_CATEGORY["education"]
-
-
-def _build_profile_query(inquiry: str, user_profile: dict) -> str:
-    """추천 의도일 때 유저 프로필을 쿼리에 덧붙여 벡터 검색 품질을 높인다.
-
-    실제 user_profile 키(auth_service/model.py 기준):
-    birth_date, zipcd, schoolcd, plcymajorcd, jobcd, earncndsecd, mrgsttscd, sbizcd
-
-    '제한없음'은 유효한 값으로 그대로 포함한다 — 제한 없는 정책과 매칭되도록.
-    None/빈값만 제외한다.
-    """
-    profile_parts = []
-    if user_profile.get("birth_date"):
-        profile_parts.append(f"생년월일:{user_profile['birth_date']}")
-    if user_profile.get("zipcd"):
-        profile_parts.append(f"거주지역:{user_profile['zipcd']}")
-    if user_profile.get("schoolcd"):
-        profile_parts.append(f"학교:{user_profile['schoolcd']}")
-    if user_profile.get("plcymajorcd"):
-        profile_parts.append(f"전공:{user_profile['plcymajorcd']}")
-    if user_profile.get("jobcd"):
-        profile_parts.append(f"직업:{user_profile['jobcd']}")
-    if user_profile.get("earncndsecd") is not None:
-        profile_parts.append(f"월소득:{user_profile['earncndsecd']}원")
-    if user_profile.get("mrgsttscd"):
-        profile_parts.append(f"혼인상태:{user_profile['mrgsttscd']}")
-    if user_profile.get("sbizcd"):
-        profile_parts.append(f"소상공인업종:{user_profile['sbizcd']}")
-
-    return f"{inquiry} / {' '.join(profile_parts)}" if profile_parts else inquiry
 
 
 async def education_search_node(state: ShareState) -> dict:
@@ -65,6 +40,7 @@ async def education_search_node(state: ShareState) -> dict:
     """
     inquiry = state["user_inquiry"]
     inquiry_types = state.get("inquiry_type", [])
+    is_recommend = "추천" in inquiry_types
     user_role = state.get("user_role", ROLE_GUEST)
     user_profile = state.get("user_profile") or {}
 
@@ -73,7 +49,7 @@ async def education_search_node(state: ShareState) -> dict:
     # 검색 정책 수(k)는 4개 도메인 공통(resolve_search_k). 교육은 추천 시 프로필을
     # 쿼리에 보강하는 전략만 별도로 유지한다.
     k = resolve_search_k(inquiry_types, state.get("requested_count"))
-    if "추천" in inquiry_types and user_profile:
+    if is_recommend and user_profile:
         query = _build_profile_query(inquiry, user_profile)
     else:  # 검색, 상세조회, 비교
         query = inquiry
@@ -100,18 +76,27 @@ async def education_search_node(state: ShareState) -> dict:
         (doc, dist, check_policy_eligibility(doc.metadata, user_profile))
         for doc, dist in documents
     ]
-    docs_with_elig.sort(key=lambda item: VERDICT_ORDER[item[2]["verdict"]] if item[2] else 2)
+    # 추천은 관련도(적합도) 순 = 벡터 반환 순서를 유지한다. 그 외에는 기존대로 자격 적합순 정렬.
+    if not is_recommend:
+        docs_with_elig.sort(key=lambda item: VERDICT_ORDER[item[2]["verdict"]] if item[2] else 2)
 
-    policies = [_pick_policy_fields(doc.metadata) for doc, _, _ in docs_with_elig]
-
+    # 정책 메타(policies)와 knowledge 텍스트를 한 번에 조립 — 적합도 점수는 정책당 1회만 계산.
+    policies = []
     lines = []
-    for idx, (doc, _dist, eligibility) in enumerate(docs_with_elig, 1):
+    for idx, (doc, dist, eligibility) in enumerate(docs_with_elig, 1):
+        score = _similarity_to_score(dist) if is_recommend else None
+
+        p = _pick_policy_fields(doc.metadata)
+        if score is not None:
+            p["suitability_score"] = score
+        policies.append(p)
+
         lines.append(f"[정책 {idx}] {doc.metadata.get('plcyNm', '')}")
         lines.append(f"내용: {doc.page_content}")
-
         if eligibility is not None:
             lines.append(format_verdict_line(eligibility))
-
+        if score is not None:
+            lines.append(f"적합도: {score}점")
         lines.append(f"신청 URL: {doc.metadata.get('aplyUrlAddr', '정보 없음')}\n")
     knowledge = "\n".join(lines)
 

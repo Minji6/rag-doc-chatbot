@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 
-from ..constants import OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
+from ..constants import OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE, RECOMMEND_GUIDE
 from ..tools import SUGGESTIONS_PROMPT, parse_suggestions, calculate_dday, check_eligibility_detailed
 
 logger = logging.getLogger(__name__)
@@ -126,6 +126,9 @@ class HousingAgent:
         # 상세조회: 특정 정책 1개를 깊이 있게 안내하도록 유도.
         if inquiry_type == "상세조회":
             prompt += OUTPUT_DETAIL_GUIDE
+        # 추천: 각 정책 블록에 추천 이유 + 적합도 점수를 노출.
+        if inquiry_type == "추천":
+            prompt += RECOMMEND_GUIDE
 
         prompt += SUGGESTIONS_PROMPT
         result = await self.agent.ainvoke(

@@ -6,7 +6,7 @@ from langchain.agents import create_agent
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain.chat_models import init_chat_model
-from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE
+from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE, RECOMMEND_GUIDE
 from ..tools.dday import calculate_dday
 from ..tools.age import calc_age as _calc_age
 from ..tools.eligibility import is_eligibility_inquiry  # type: ignore[attr-defined]
@@ -344,6 +344,9 @@ class WelfareAgent:
         # 상세조회: 특정 정책 1개 깊이 안내. 단, 자격 확인 질문이면 자격 판정 결과가 우선.
         elif inquiry_type == "상세조회" and not _is_eligibility_inquiry(inquiry):
             prompt += OUTPUT_DETAIL_GUIDE
+        # 추천: 각 정책 블록에 추천 이유 + 적합도 점수를 노출.
+        elif inquiry_type == "추천":
+            prompt += RECOMMEND_GUIDE
 
         prompt += SUGGESTIONS_PROMPT
         history = _build_agent_history(messages or [])

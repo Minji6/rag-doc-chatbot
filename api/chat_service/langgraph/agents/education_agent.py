@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 from langchain.tools import tool
-from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE
+from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, RECOMMEND_GUIDE
 from ..tools.dday import calculate_dday
 from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
@@ -347,7 +347,8 @@ class EducationAgent:
                 tools=_TOOLS_RECOMMEND if inquiry_type == "추천" else _TOOLS,
                 system_prompt=prompt + (
                     COMPARISON_COMMENT_GUIDE if inquiry_type == "비교" else OUTPUT_FORMAT_GUIDE
-                ),
+                # 추천은 각 정책 블록에 추천 이유 + 적합도 점수를 노출하도록 유도.
+                ) + (RECOMMEND_GUIDE if inquiry_type == "추천" else ""),
             )
             for inquiry_type, prompt in _SYSTEM_PROMPTS.items()
         }
