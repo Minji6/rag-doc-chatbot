@@ -50,20 +50,22 @@ async def welfare_search_node(state: ShareState) -> dict:
             "domain_policies": {"welfare": []},
         }
 
-    # 추천이면 벡터 유사도를 0~100 적합도로 환산해 정책 메타에 넣는다(관련도 축, 자격과 무관).
+    # 정책 메타(policies)와 knowledge 텍스트를 한 번에 조립 — 적합도 점수는 정책당 1회만 계산.
+    # (추천이면 벡터 유사도를 0~100 적합도로 환산해 넣는다 — 관련도 축, 자격과 무관.)
     policies = []
-    for doc, dist in documents:
-        p = _pick_policy_fields(doc.metadata)
-        if is_recommend:
-            p["suitability_score"] = _similarity_to_score(dist)
-        policies.append(p)
-
     lines = []
     for idx, (doc, dist) in enumerate(documents, 1):
+        score = _similarity_to_score(dist) if is_recommend else None
+
+        p = _pick_policy_fields(doc.metadata)
+        if score is not None:
+            p["suitability_score"] = score
+        policies.append(p)
+
         lines.append(f"[정책 {idx}] {doc.metadata.get('plcyNm', '')}")
         lines.append(f"내용: {doc.page_content}")
-        if is_recommend:
-            lines.append(f"적합도: {_similarity_to_score(dist)}점")
+        if score is not None:
+            lines.append(f"적합도: {score}점")
         lines.append(f"신청 URL: {doc.metadata.get('aplyUrlAddr', '정보 없음')}\n")
     knowledge = "\n".join(lines)
 

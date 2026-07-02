@@ -45,8 +45,8 @@ def build_profile_query(inquiry: str, user_profile: dict) -> str:
         profile_parts.append(f"전공:{user_profile['plcymajorcd']}")
     if user_profile.get("jobcd"):
         profile_parts.append(f"직업:{user_profile['jobcd']}")
-    if user_profile.get("earncndsecd") is not None:
-        profile_parts.append(f"월소득:{user_profile['earncndsecd']}원")
+    if user_profile.get("earncndsecd"):
+        profile_parts.append(f"소득분위:{user_profile['earncndsecd']}분위")
     if user_profile.get("mrgsttscd"):
         profile_parts.append(f"혼인상태:{user_profile['mrgsttscd']}")
     if user_profile.get("sbizcd"):

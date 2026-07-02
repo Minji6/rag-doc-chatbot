@@ -60,23 +60,23 @@ async def housing_search_node(state: ShareState) -> dict:
     if not is_recommend:
         docs_with_elig.sort(key=lambda item: VERDICT_ORDER[item[2]["verdict"]] if item[2] else 2)
 
+    # 정책 메타(policies)와 knowledge 텍스트를 한 번에 조립 — 적합도 점수는 정책당 1회만 계산.
     policies = []
-    for doc, dist, _elig in docs_with_elig:
-        p = _pick_policy_fields(doc.metadata)
-        if is_recommend:
-            p["suitability_score"] = _similarity_to_score(dist)
-        policies.append(p)
-
     lines = []
     for idx, (doc, dist, eligibility) in enumerate(docs_with_elig, 1):
+        score = _similarity_to_score(dist) if is_recommend else None
+
+        p = _pick_policy_fields(doc.metadata)
+        if score is not None:
+            p["suitability_score"] = score
+        policies.append(p)
+
         lines.append(f"[정책 {idx}] {doc.metadata.get('plcyNm', '')}")
         lines.append(f"내용: {doc.page_content}")
-
         if eligibility is not None:
             lines.append(format_verdict_line(eligibility))
-        if is_recommend:
-            lines.append(f"적합도: {_similarity_to_score(dist)}점")
-
+        if score is not None:
+            lines.append(f"적합도: {score}점")
         lines.append(f"신청 URL: {doc.metadata.get('aplyUrlAddr', '정보 없음')}\n")
     knowledge = "\n".join(lines)
 
