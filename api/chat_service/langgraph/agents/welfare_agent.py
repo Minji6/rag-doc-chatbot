@@ -77,10 +77,6 @@ def _build_agent_history(messages: list) -> list[HumanMessage | AIMessage]:
 
 _is_eligibility_inquiry = is_eligibility_inquiry
 
-# 자격 검증은 에이전트 답변 텍스트에 넣지 않는다.
-# 상세조회 시에만 supervisor가 build_eligibility_report로 구조화 결과를 정책에 첨부하고,
-# 프론트 상세 모달의 '자격 검증' 섹션이 이를 렌더한다. (추천·검색·비교엔 자격 검증 없음)
-
 
 ##############################################################
 # 도구 정의 (2개 — LLM이 호출 가능한 도구만)
@@ -324,6 +320,10 @@ class WelfareAgent:
 
         # 웹 전체 대체 시 구조화 데이터 없음 (형식 불일치) — RAG 정책만 전달
         rag_policies = [] if web_searched else policies
+
+        # 자격 검증(build_eligibility_report) 첨부는 welfare_node가 담당한다.
+        # 이번 턴 검색 정책뿐 아니라 후속질문(resolved_policies) 경로까지 붙여야 하는데,
+        # resolved_policies는 state에만 있고 이 run()에는 없기 때문이다.
 
         agent = self._make_agent(user_profile, user_role)
         prompt = (
