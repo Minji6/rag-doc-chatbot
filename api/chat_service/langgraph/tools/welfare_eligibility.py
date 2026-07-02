@@ -137,16 +137,16 @@ def build_eligibility_report(user_profile: dict, policy_metadata: dict) -> dict 
         _check_school(policy_metadata, user_profile.get("schoolcd")),
     ]
 
-    met = [c for c in items if c["status"] == "met"]
     unmet = [c for c in items if c["status"] == "unmet"]
     has_unknown = any(c["status"] == "unknown" for c in items)
 
     if unmet:
-        # 미충족이 하나라도 있으면 신청 대상 아님. 일부라도 충족했으면 partial(🟡).
-        overall = "ineligible" if not met else "partial"
+        # 자격 요건은 하나라도 미충족이면 부적격 — 나머지를 충족했어도 신청 대상 아님(🔴).
+        overall = "ineligible"
         blocking = ", ".join(c["label"] for c in unmet)
         summary = f"현재 {blocking} 요건을 충족하지 않아 신청 대상이 아닙니다."
     elif has_unknown:
+        # 미충족은 없지만 정보 부족으로 확정 불가한 조건이 있음(🟡).
         overall = "partial"
         summary = "일부 조건은 정보가 부족해 자격을 확정할 수 없습니다. 추가 정보 확인이 필요합니다."
     else:
