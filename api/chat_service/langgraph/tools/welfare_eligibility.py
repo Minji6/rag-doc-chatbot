@@ -31,6 +31,19 @@ def _age_req(lo: int | None, hi: int | None) -> str:
     return "제한없음"
 
 
+def _fmt_income(value) -> str:
+    """소득 금액(원)을 읽기 좋게 표기 — 만원 단위 우선, 만원 미만 잔액이 있으면 원 표기.
+    (earncndsecd/srhmhldIncmCd는 소득 '금액(원)'이다 — 분위 코드가 아님)
+    """
+    try:
+        won = int(value)
+    except (ValueError, TypeError):
+        return str(value)
+    if won % 10000 == 0:
+        return f"{won // 10000:,}만원"
+    return f"{won:,}원"
+
+
 def _check_age(meta: dict, age: int | None) -> dict:
     user_val = f"만 {age}세" if age is not None else "정보 없음"
     if meta.get("sprtTrgtAgeLmtYn") == "N":
@@ -91,16 +104,16 @@ def _check_job(meta: dict, user_job: str | None) -> dict:
 def _check_income(meta: dict, user_income: str | None) -> dict:
     max_income_str = (meta.get("srhmhldIncmCd") or "").strip()
     if not max_income_str:
-        return _cond("소득", "제한없음", f"{user_income}분위" if user_income else "정보 없음", "met")
-    requirement = f"{max_income_str}분위 이하"
+        return _cond("소득", "제한없음", _fmt_income(user_income) if user_income else "정보 없음", "met")
+    requirement = f"{_fmt_income(max_income_str)} 이하"
     if not user_income:
         return _cond("소득", requirement, "정보 없음", "unknown")
     try:
         if int(user_income) <= int(max_income_str):
-            return _cond("소득", requirement, f"{user_income}분위", "met")
-        return _cond("소득", requirement, f"{user_income}분위", "unmet")
+            return _cond("소득", requirement, _fmt_income(user_income), "met")
+        return _cond("소득", requirement, _fmt_income(user_income), "unmet")
     except (ValueError, TypeError):
-        return _cond("소득", requirement, f"{user_income}분위", "unknown")
+        return _cond("소득", requirement, _fmt_income(user_income), "unknown")
 
 
 def _check_school(meta: dict, user_school: str | None) -> dict:
