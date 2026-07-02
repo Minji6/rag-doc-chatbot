@@ -88,19 +88,55 @@ def _check_job(meta: dict, user_job: str | None) -> dict:
     return _cond("취업", policy_job, user_job, "unmet")
 
 
-def _check_income(meta: dict, user_income: str | None) -> dict:
-    max_income_str = (meta.get("srhmhldIncmCd") or "").strip()
-    if not max_income_str:
-        return _cond("소득", "제한없음", f"{user_income}분위" if user_income else "정보 없음", "met")
-    requirement = f"{max_income_str}분위 이하"
-    if not user_income:
-        return _cond("소득", requirement, "정보 없음", "unknown")
+def _to_manwon_bound(value) -> int | None:
+    """정책 소득 경계값(만원)을 정수로. 0·빈값·파싱실패는 '경계 없음'(None)으로 취급."""
     try:
-        if int(user_income) <= int(max_income_str):
-            return _cond("소득", requirement, f"{user_income}분위", "met")
-        return _cond("소득", requirement, f"{user_income}분위", "unmet")
+        v = int(value)
     except (ValueError, TypeError):
-        return _cond("소득", requirement, f"{user_income}분위", "unknown")
+        return None
+    return v if v > 0 else None
+
+
+def _income_range_req(lo: int | None, hi: int | None) -> str:
+    """소득 요건(만원) 표시 문자열."""
+    if lo is not None and hi is not None:
+        return f"{lo:,}만원 ~ {hi:,}만원"
+    if hi is not None:
+        return f"{hi:,}만원 이하"
+    if lo is not None:
+        return f"{lo:,}만원 이상"
+    return "제한없음"
+
+
+def _check_income(meta: dict, user_income) -> dict:
+    """소득 조건 검사.
+
+    정책: earnCndSeCd(무관/연소득/기타) 중 '연소득'일 때만 earnMinAmt~earnMaxAmt(만원)
+          구간을 검사한다. 무관/기타/빈값은 소득 제한 없음.
+    사용자: earncndsecd는 '원' 단위이므로 만원으로 환산(÷10000)해 비교·표시한다.
+    """
+    # 사용자 소득(원) → 만원 환산
+    try:
+        user_manwon = int(user_income) // 10000 if user_income not in (None, "") else None
+    except (ValueError, TypeError):
+        user_manwon = None
+    user_display = f"{user_manwon:,}만원" if user_manwon is not None else "정보 없음"
+
+    cnd = (meta.get("earnCndSeCd") or "").strip()
+    # 무관/기타/빈값 → 소득 제한 없음
+    if cnd != "연소득":
+        return _cond("소득", "제한없음", user_display, "met")
+
+    # 연소득 → earnMinAmt ~ earnMaxAmt (만원) 구간 검사. 0/빈값은 해당 경계 없음.
+    lo = _to_manwon_bound(meta.get("earnMinAmt"))
+    hi = _to_manwon_bound(meta.get("earnMaxAmt"))
+    requirement = _income_range_req(lo, hi)
+
+    if user_manwon is None:
+        return _cond("소득", requirement, "정보 없음", "unknown")
+
+    ok = (lo is None or user_manwon >= lo) and (hi is None or user_manwon <= hi)
+    return _cond("소득", requirement, user_display, "met" if ok else "unmet")
 
 
 def _check_school(meta: dict, user_school: str | None) -> dict:
