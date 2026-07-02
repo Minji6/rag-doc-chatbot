@@ -20,6 +20,13 @@ logger = logging.getLogger(__name__)
 _CATEGORY = AGENT_CATEGORY["education"]
 
 
+def _is_zero(v) -> bool:
+    try:
+        return int(v) == 0
+    except (TypeError, ValueError):
+        return False
+
+
 async def education_search_node(state: ShareState) -> dict:
     """교육 정책 검색 노드.
 
@@ -41,6 +48,7 @@ async def education_search_node(state: ShareState) -> dict:
     inquiry = state["user_inquiry"]
     inquiry_types = state.get("inquiry_type", [])
     is_recommend = "추천" in inquiry_types
+    is_detail = "상세조회" in inquiry_types
     user_role = state.get("user_role", ROLE_GUEST)
     user_profile = state.get("user_profile") or {}
 
@@ -76,8 +84,11 @@ async def education_search_node(state: ShareState) -> dict:
         (doc, dist, check_policy_eligibility(doc.metadata, user_profile))
         for doc, dist in documents
     ]
-    # 추천은 관련도(적합도) 순 = 벡터 반환 순서를 유지한다. 그 외에는 기존대로 자격 적합순 정렬.
-    if not is_recommend:
+    # 추천은 관련도(적합도) 순 = 벡터 반환 순서를 유지한다.
+    # 상세조회도 정렬하지 않는다 — 자격순으로 재정렬하면 질문과 가장 관련 있는(벡터 1순위)
+    # 정책이 뒤로 밀려, "정책 1개에 집중"해야 할 상세조회에서 엉뚱한 정책이 앞에 온다.
+    # (검색·비교는 여러 건을 나열하므로 자격 적합순 정렬을 유지한다.)
+    if not is_recommend and not is_detail:
         docs_with_elig.sort(key=lambda item: VERDICT_ORDER[item[2]["verdict"]] if item[2] else 2)
 
     # 정책 메타(policies)와 knowledge 텍스트를 한 번에 조립 — 적합도 점수는 정책당 1회만 계산.
@@ -87,6 +98,15 @@ async def education_search_node(state: ShareState) -> dict:
         score = _similarity_to_score(dist) if is_recommend else None
 
         p = _pick_policy_fields(doc.metadata)
+        # sprtTrgtAgeLmtYn != "Y"(연령 제한 없음/불명)이면 min/max age는 의미 없는 플레이스홀더인
+        # 경우가 많다 (check_policy_eligibility의 _check_age도 동일하게 처리).
+        # 실측 결과 lmtYn="Y"인데도 min=max=0으로 채워진(사실상 미기재) 소스 데이터가 있어
+        # (예: 대학생 대상 장학금에 "0~0세" 제한은 있을 수 없음), 그 경우도 함께 비운다.
+        # 그대로 카드에 노출하면 "만 0~0세"처럼 사용자에게 오해를 준다.
+        min_age, max_age = p.get("sprtTrgtMinAge"), p.get("sprtTrgtMaxAge")
+        if p.get("sprtTrgtAgeLmtYn") != "Y" or (_is_zero(min_age) and _is_zero(max_age)):
+            p["sprtTrgtMinAge"] = None
+            p["sprtTrgtMaxAge"] = None
         if score is not None:
             p["suitability_score"] = score
         policies.append(p)
