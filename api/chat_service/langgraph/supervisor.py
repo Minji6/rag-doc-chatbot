@@ -77,16 +77,11 @@ def _shape_response(
 ) -> tuple[str, list[dict]]:
     """의도(inquiry_type)에 맞춰 message/policies를 정형한다 (프론트 렌더 분기용).
 
-    - 추천 단독: message만 보낸다 (policies 비움) — 추천 사유가 담긴 메시지 위주.
-    - 상세조회 단독: policies만 보낸다 (message 비움) — 프론트가 상세 카드로 렌더.
-    - 그 외(검색/비교/복합 의도/멀티 분야): 둘 다 보낸다 (정보 손실 방지).
-    복합 요청("추천하고 비교")은 단독이 아니므로 둘 다 유지한다.
+    현재는 모든 의도가 message·policies를 함께 반환한다.
+    추천 단독일 때는 policies 각 항목에 suitability_score(적합도, 0~100 관련도 점수)가 담겨 있어
+    프론트가 뱃지·정렬 등에 구조화된 값으로 활용할 수 있다
+    (과거엔 추천 단독이면 policies를 비웠으나, 적합도를 구조화 필드로 내보내기 위해 유지한다).
     """
-    types = set(inquiry_types or [])
-    if types == {"추천"}:
-        return message, []
-    if types == {"상세조회"}:
-        return message, policies
     return message, policies
 
 
@@ -167,7 +162,7 @@ class ChatbotSupervisor:
                 "message": str — composer가 조립한 최종 답변 텍스트 (상세조회 단독이면 ""),
                 "category": list[str] — analysis_node가 분류한 분야 리스트 (멀티 가능),
                 "inquiry_type": list[str] — 의도 리스트 (검색/추천/상세조회/비교, 복합 가능),
-                "policies": list[dict] — 활성 도메인의 raw 정책 메타 (추천 단독이면 빈 리스트),
+                "policies": list[dict] — 활성 도메인의 raw 정책 메타 (추천이면 정책별 suitability_score 포함),
                 "suggestions": list[str] — 교육 에이전트가 생성한 follow-up 질문,
             }
         """

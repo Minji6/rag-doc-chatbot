@@ -75,6 +75,8 @@ _SYSTEM_PROMPT = f"""당신은 청년정책 챗봇의 의도 분석기입니다.
 - 한 분야에 해당하면 그 분야만 리스트에 담아 반환 (예: ["주거"])
 - 여러 분야에 걸치면 해당하는 분야를 모두 리스트에 담아 반환 (예: ["주거", "일자리"])
 - 명확히 한 분야가 떠오르면 그 하나만 선택. 모호할 때만 복수 선택.
+- **비교 의도일 때**: 비교 대상 정책들이 서로 다른 분야에 속하면 **모든 분야를 빠짐없이** 담아야 한다.
+  예: "청년 월세 지원이랑 청년내일채움공제 비교해줘" → ["주거", "일자리"] (두 분야 모두 필수)
 
 [의도 - inquiry_type] {', '.join(INQUIRY_TYPES)} 중 하나 이상 (리스트). **기본값은 '검색'.**
 - 검색: 분야·키워드로 정책 목록을 찾고 싶어함. **대부분의 "~정책 알려줘 / 찾아줘 / 뭐 있어? / 같이 알려줘"는 검색이다.**
@@ -119,6 +121,14 @@ async def analysis_node(state: ShareState) -> dict:
             c = (p.get("category") or "").strip()
             if c and c not in seen:
                 seen.append(c)
+        # 비교 의도일 때는 LLM이 분류한 category도 병합한다.
+        # resolved_policies가 한 분야만 커버해도 새로 언급된 타 분야 정책을
+        # 놓치지 않기 위함 (예: last_policies에 주거만 있는데
+        # "이거랑 청년내일채움공제 비교해줘" → 일자리도 검색돼야 함).
+        if "비교" in (analysis.inquiry_type or []):
+            for c in (analysis.category or []):
+                if c and c not in seen:
+                    seen.append(c)
         categories = seen or (analysis.category or [])
         logger.info("resolved_policies로 분야 확정 — category=%s", categories)
     else:
