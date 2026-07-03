@@ -4,22 +4,16 @@ from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE, RECOMMEND_GUIDE
-from ..tools import SUGGESTIONS_PROMPT, parse_suggestions, calculate_dday, check_eligibility_detailed
+from ..tools import SUGGESTIONS_PROMPT, parse_suggestions, calculate_dday
 
 logger = logging.getLogger(__name__)
 
 _CATEGORY = AGENT_CATEGORY["employment"]
 
-# 검색 노드가 이미 나이/지역/혼인 기준으로 ✅/❌/❓을 매겨두지만, 사용자가 특정 정책을 콕 집어
-# "신청 가능해?"처럼 물으면 취업/소득/학력까지 포함한 상세 판정이 필요하다 — 그때만 도구를 쓴다.
 _TOOL_USAGE_GUIDE = """[도구 사용 규칙 — 최우선, 아래 출력 형식 규칙보다 우선한다]
-- 사용자가 "신청 가능해?", "자격 되나?", "해당돼?" 등 특정 정책의 자격을 물으면,
-  정책을 나열하기 전에 먼저 check_eligibility_detailed를 호출하세요.
-  user_profile에는 [사용자 정보] 값을, policy_metadata에는 [정책 구조화 데이터]에서 해당 정책 딕셔너리를
-  그대로 전달하세요. [정책 구조화 데이터]에 있는 정책에만 사용하세요.
 - 사용자가 마감일·신청 기간을 물으면 calculate_dday를 호출하세요.
   deadline에는 bizPrdEndYmd 값을, apply_period_type에는 aplyPrdSeCd 값을 전달하세요.
-- 도구를 호출했다면 그 결과를 답변 맨 앞 "### 자격 판정 결과"(또는 "### 마감일 안내") 블록으로
+- 도구를 호출했다면 그 결과를 답변 맨 앞 "### 마감일 안내" 블록으로
   먼저 제시한 뒤, 정책 목록을 이어 붙이세요. 도구 결과를 추측으로 대체하지 마세요.
 
 """
@@ -38,7 +32,7 @@ class EmploymentAgent:
         self.logger = logging.getLogger(f"{__name__}.EmploymentAgent")
         self.agent = create_agent(
             model=model,
-            tools=[calculate_dday, check_eligibility_detailed],
+            tools=[calculate_dday],
             system_prompt=_TOOL_USAGE_GUIDE + """당신은 청년 일자리 정책 전문가입니다.
                 제공된 [정책 정보]에만 근거하여 답변하세요. 정보에 없는 정책이나 수치를 임의로 만들어내지 마세요.
                 [정책 정보]가 비어 있으면, 관련 정책을 찾지 못했다고 솔직하게 안내하세요.
@@ -89,12 +83,12 @@ class EmploymentAgent:
         if user_profile:
             prompt += f"\n[사용자 정보]\n{user_profile}\n"
 
-        # check_eligibility_detailed/calculate_dday 도구가 정책 딕셔너리를 그대로 받을 수 있도록 원본 메타를 첨부.
+        # calculate_dday 도구가 정책 딕셔너리를 그대로 받을 수 있도록 원본 메타를 첨부.
         if policies:
             prompt += (
                 f"\n[정책 구조화 데이터]\n"
                 f"{json.dumps(policies, ensure_ascii=False, indent=2)}\n"
-                "자격 확인·마감일 도구 호출 시 위 데이터를 사용하세요.\n"
+                "마감일 도구 호출 시 위 데이터를 사용하세요.\n"
             )
 
         # 비교 모드: 정형 표는 composer 담당. 에이전트는 분야 관점 코멘트만.
