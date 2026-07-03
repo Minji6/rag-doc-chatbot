@@ -2,15 +2,11 @@
 
 - check_policy_eligibility / eligibility_sort_key / format_verdict_line:
   LLM 미사용, 검색 노드에서 자격 적합순 정렬·라벨링에 사용 (나이/지역/혼인 공통 검사).
-- check_eligibility_detailed (@tool):
-  LLM이 호출하는 상세 자격 판정 툴. 나이/지역/혼인 + 취업/소득/학력까지 검사.
 - user_profile이 비어있으면(=게스트) check_policy_eligibility는 None을 반환해 진단을 스킵한다.
 """
 import logging
 import re
 from typing import Literal, TypedDict
-
-from langchain.tools import tool
 
 from .age import calc_age
 
@@ -105,42 +101,6 @@ def _check_marriage(meta: dict, user_mrg: str | None) -> tuple[Verdict, str]:
     return "ineligible", f"혼인 ✗ (요건: {pol_mrg} / 현재: {user_mrg})"
 
 
-def _check_job(meta: dict, user_job: str | None) -> tuple[Verdict, str]:
-    policy_job = (meta.get("jobCd") or "제한없음").strip()
-    if not policy_job or policy_job == "제한없음":
-        return "eligible", "취업 ✓ (제한없음)"
-    if not user_job:
-        return "unknown", "취업: 사용자 정보 없음"
-    if user_job == policy_job:
-        return "eligible", f"취업 ✓ ({user_job})"
-    return "ineligible", f"취업 ✗ (요건: {policy_job} / 현재: {user_job})"
-
-
-def _check_income(meta: dict, user_income: str | None) -> tuple[Verdict, str]:
-    max_income_str = (meta.get("srhmhldIncmCd") or "").strip()
-    if not max_income_str:
-        return "eligible", "소득 ✓ (제한없음)"
-    if not user_income:
-        return "unknown", "소득: 사용자 정보 없음"
-    try:
-        if int(user_income) <= int(max_income_str):
-            return "eligible", f"소득 ✓ ({user_income}분위 ≤ {max_income_str}분위)"
-        return "ineligible", f"소득 ✗ ({user_income}분위 > {max_income_str}분위)"
-    except (ValueError, TypeError):
-        return "unknown", "소득 조건 확인 불가"
-
-
-def _check_school(meta: dict, user_school: str | None) -> tuple[Verdict, str]:
-    policy_school = (meta.get("schoolcd") or "제한없음").strip()
-    if not policy_school or policy_school == "제한없음":
-        return "eligible", "학력 ✓ (제한없음)"
-    if not user_school:
-        return "unknown", "학력: 사용자 정보 없음"
-    if user_school == policy_school:
-        return "eligible", f"학력 ✓ ({user_school})"
-    return "ineligible", f"학력 ✗ (요건: {policy_school} / 현재: {user_school})"
-
-
 def check_policy_eligibility(
     metadata: dict, user_profile: dict | None
 ) -> EligibilityResult | None:
@@ -178,47 +138,3 @@ def format_verdict_line(result: EligibilityResult) -> str:
 
 # 검색 결과 정렬 우선순위: eligible → unknown → ineligible
 VERDICT_ORDER = {"eligible": 0, "unknown": 1, "ineligible": 2}
-
-
-@tool
-def check_eligibility_detailed(user_profile: dict, policy_metadata: dict) -> str:
-    """
-    사용자 프로필과 복지 정책 자격 조건을 교차 검증해 신청 가능 여부를 판별합니다.
-    사용자가 "신청 가능해?", "자격 되나?" 등을 물을 때 호출하세요.
-    RAG 검색([정책 구조화 데이터])으로 가져온 정책에만 사용하세요. 웹 검색 결과에는 사용하지 마세요.
-
-    Args:
-        user_profile: 사용자 프로필 딕셔너리 (나이·취업상태·소득·지역·학력·혼인 등)
-        policy_metadata: RAG로 가져온 정책의 메타데이터 딕셔너리
-    Returns:
-        str: 항목별 충족 여부(✅/❌/⚠️) + 최종 판정 결과
-    """
-    policy_name = policy_metadata.get("plcyNm", "해당 정책")
-    logger.info("check_eligibility_detailed 실행 — 정책: %s", policy_name)
-    age = calc_age(user_profile.get("birth_date"))
-    checks: list[tuple[Verdict, str]] = [
-        _check_age(policy_metadata, age),
-        _check_region(policy_metadata, user_profile.get("zipcd")),
-        _check_marriage(policy_metadata, user_profile.get("mrgsttscd")),
-        _check_job(policy_metadata, user_profile.get("jobcd")),
-        _check_income(policy_metadata, user_profile.get("earncndsecd")),
-        _check_school(policy_metadata, user_profile.get("schoolcd")),
-    ]
-    lines = [f"[ {policy_name} ] 자격 판정 결과", "-" * 50]
-    for verdict, reason in checks:
-        icon = "✅" if verdict == "eligible" else ("❌" if verdict == "ineligible" else "⚠️")
-        lines.append(f"  {icon} {reason}")
-    lines.append("-" * 50)
-
-    verdicts = {v for v, _ in checks}
-    if "ineligible" in verdicts:
-        lines.append("판정: ❌ 불가")
-        lines.append(f"사유: {', '.join(r for v, r in checks if v == 'ineligible')}")
-    elif "unknown" in verdicts:
-        lines.append("판정: ⚠️ 확인필요")
-        lines.append("일부 조건 정보가 부족합니다. 해당 기관에 직접 문의하세요.")
-    else:
-        lines.append("판정: ✅ 가능")
-        lines.append("모든 조건을 충족합니다.")
-
-    return "\n".join(lines)

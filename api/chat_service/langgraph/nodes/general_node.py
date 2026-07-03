@@ -6,15 +6,24 @@
 - 정책 검색(RAG)을 전혀 돌리지 않고, 단일 LLM 호출로 자연스러운 대화를 생성한다.
 - 정책봇 정체성은 유지한다: 가볍게 응대하되, 도움 줄 수 있는 정책 주제로 부드럽게 유도.
 - composer를 거치지 않고 final_response를 직접 채워 바로 END로 간다. policies는 없다.
+- 게스트(비로그인)가 '추천' 의도로 물을 때도 route_node_fun이 이 노드로 보낸다.
+  이 경우엔 LLM 호출 없이 회원가입 유도 고정 멘트로 바로 응답한다(검색·생성 비용 없음).
 """
 import logging
 
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import SystemMessage, HumanMessage
 
+from ..constants import ROLE_GUEST
 from ..state import ShareState
 
 logger = logging.getLogger(__name__)
+
+_GUEST_RECOMMEND_MESSAGE = (
+    "정책 추천은 회원가입 후 이용하실 수 있는 기능이에요! 🙌\n"
+    "로그인하시면 회원님의 조건에 꼭 맞는 정책을 찾아 추천해드릴게요.\n"
+    "지금은 궁금하신 분야나 정책명을 알려주시면 검색은 바로 도와드릴 수 있어요."
+)
 
 # 모듈 싱글톤 — 한 번만 생성
 _chat_model = init_chat_model("gpt-4o-mini", model_provider="openai", temperature=0.5)
@@ -53,7 +62,12 @@ def _history_text(messages: list) -> str:
 
 
 async def general_node(state: ShareState) -> dict:
-    """정책 무관 일반대화에 응대해 final_response를 직접 채운다 (composer 우회)."""
+    """정책 무관 일반대화 또는 게스트 추천 차단에 응대해 final_response를 직접 채운다 (composer 우회)."""
+    # 게스트 추천 차단 — is_general=false로 들어오지만(정책 관련 질문은 맞음) '추천'이라 검색 없이 회원가입 안내.
+    if state.get("user_role") == ROLE_GUEST and "추천" in (state.get("inquiry_type") or []):
+        logger.info("게스트 추천 차단 — query=%s", state["user_inquiry"][:30])
+        return {"final_response": _GUEST_RECOMMEND_MESSAGE, "suggestions": []}
+
     inquiry = state["user_inquiry"]
     messages = state.get("messages") or []
     image_context = state.get("image_context") or ""

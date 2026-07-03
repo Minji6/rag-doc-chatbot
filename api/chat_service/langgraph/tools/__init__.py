@@ -4,7 +4,6 @@
 새 공통 툴은 여기에 추가하고 각 에이전트에서 import 한다.
 """
 from .dday import calculate_dday, dday_label, end_date_from, parse_dates
-from .eligibility import check_eligibility_detailed
 from .suggestions import SUGGESTIONS_PROMPT, parse_suggestions
 
 __all__ = [
@@ -12,7 +11,6 @@ __all__ = [
     "dday_label",
     "end_date_from",
     "parse_dates",
-    "check_eligibility_detailed",
     "SUGGESTIONS_PROMPT",
     "parse_suggestions",
 ]

@@ -20,13 +20,6 @@ logger = logging.getLogger(__name__)
 _CATEGORY = AGENT_CATEGORY["education"]
 
 
-def _is_zero(v) -> bool:
-    try:
-        return int(v) == 0
-    except (TypeError, ValueError):
-        return False
-
-
 async def education_search_node(state: ShareState) -> dict:
     """교육 정책 검색 노드.
 
@@ -98,15 +91,6 @@ async def education_search_node(state: ShareState) -> dict:
         score = _similarity_to_score(dist) if is_recommend else None
 
         p = _pick_policy_fields(doc.metadata)
-        # sprtTrgtAgeLmtYn != "Y"(연령 제한 없음/불명)이면 min/max age는 의미 없는 플레이스홀더인
-        # 경우가 많다 (check_policy_eligibility의 _check_age도 동일하게 처리).
-        # 실측 결과 lmtYn="Y"인데도 min=max=0으로 채워진(사실상 미기재) 소스 데이터가 있어
-        # (예: 대학생 대상 장학금에 "0~0세" 제한은 있을 수 없음), 그 경우도 함께 비운다.
-        # 그대로 카드에 노출하면 "만 0~0세"처럼 사용자에게 오해를 준다.
-        min_age, max_age = p.get("sprtTrgtMinAge"), p.get("sprtTrgtMaxAge")
-        if p.get("sprtTrgtAgeLmtYn") != "Y" or (_is_zero(min_age) and _is_zero(max_age)):
-            p["sprtTrgtMinAge"] = None
-            p["sprtTrgtMaxAge"] = None
         if score is not None:
             p["suitability_score"] = score
         policies.append(p)

@@ -20,9 +20,29 @@ vectorstore = PGVector(
 )
 
 
+def _is_zero(v) -> bool:
+    try:
+        return int(v) == 0
+    except (TypeError, ValueError):
+        return False
+
+
 def pick_policy_fields(metadata: dict) -> dict:
-    """PGVector 메타에서 화이트리스트 필드(POLICY_METADATA_FIELDS)만 추려 dict 생성."""
-    return {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
+    """PGVector 메타에서 화이트리스트 필드(POLICY_METADATA_FIELDS)만 추려 dict 생성.
+
+    4개 도메인이 sprtTrgtMinAge/MaxAge/AgeLmtYn을 공유 스키마로 쓰므로 정제도 여기서
+    한 번만 한다. sprtTrgtAgeLmtYn != "Y"(연령 제한 없음/불명)이면 min/max age는 의미 없는
+    플레이스홀더인 경우가 많다 (check_policy_eligibility의 _check_age도 동일하게 처리).
+    실측 결과 lmtYn="Y"인데도 min=max=0으로 채워진(사실상 미기재) 소스 데이터가 있어
+    (예: 대학생 대상 장학금에 "0~0세" 제한은 있을 수 없음), 그 경우도 함께 비운다.
+    그대로 카드에 노출하면 "만 0~0세"처럼 사용자에게 오해를 준다.
+    """
+    p = {key: metadata.get(key) for key in POLICY_METADATA_FIELDS}
+    min_age, max_age = p.get("sprtTrgtMinAge"), p.get("sprtTrgtMaxAge")
+    if p.get("sprtTrgtAgeLmtYn") != "Y" or (_is_zero(min_age) and _is_zero(max_age)):
+        p["sprtTrgtMinAge"] = None
+        p["sprtTrgtMaxAge"] = None
+    return p
 
 
 def build_profile_query(inquiry: str, user_profile: dict) -> str:
