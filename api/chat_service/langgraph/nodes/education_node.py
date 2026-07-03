@@ -1,4 +1,5 @@
 import logging
+import re
 from ..state import ShareState, DomainResult
 from ..agents.education_agent import EducationAgent
 from ..constants import AGENT_CATEGORY, agent_mode
@@ -7,6 +8,7 @@ logger = logging.getLogger(__name__)
 agent = EducationAgent()
 
 _CATEGORY = AGENT_CATEGORY["education"]
+_POLICY_HEADER_RE = re.compile(r"^### (.+)$", re.MULTILINE)
 
 
 async def education_node(state: ShareState) -> dict:
@@ -25,13 +27,23 @@ async def education_node(state: ShareState) -> dict:
     if image_context:
         inquiry = f"{inquiry}\n\n[첨부 이미지 내용]\n{image_context}"
 
+    resolved_mode = agent_mode(state.get("inquiry_type", []))
     text, suggestions = await agent.run(
         inquiry=inquiry,
         knowledge=knowledge,
         policies=policies,
         user_profile=state.get("user_profile"),
-        inquiry_type=agent_mode(state.get("inquiry_type", [])),
+        inquiry_type=resolved_mode,
     )
+
+    # 상세조회는 정책 1개에 집중하는 모드다. 검색 단계는 유사 정책까지 대비해 k=2로 가져오지만,
+    # 카드 UI(응답 policies)는 에이전트가 실제로 "### 정책명"으로 설명한 정책만 보여준다.
+    # 그렇지 않으면 질문과 무관한 2번째 검색 결과가 그대로 카드로 함께 노출된다.
+    if resolved_mode == "상세조회" and policies:
+        displayed = set(_POLICY_HEADER_RE.findall(text))
+        filtered = [p for p in policies if p.get("plcyNm") in displayed]
+        if filtered:
+            policies = filtered
 
     source = "rag" if policies else "none"
     result = DomainResult(

@@ -1,11 +1,13 @@
 import json
 import logging
 import re
+from dataclasses import dataclass, field
 from typing import Annotated
 from fastapi import Depends
 from langchain.agents import create_agent
 from langchain.tools import tool
-from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, RECOMMEND_GUIDE
+from langgraph.runtime import get_runtime
+from ..constants import AGENT_CATEGORY, OUTPUT_FORMAT_GUIDE, COMPARISON_COMMENT_GUIDE, OUTPUT_DETAIL_GUIDE, RECOMMEND_GUIDE
 from ..tools.dday import calculate_dday
 from ..tools import SUGGESTIONS_PROMPT, parse_suggestions
 
@@ -53,10 +55,54 @@ _SELF_FUNDED_KEYWORDS = [
 #----------------------------------------------
 # 학점 조건 파싱 패턴
 #----------------------------------------------
-_GPA_PATTERN = re.compile(
-    r"(?:학점|평점|성적|gpa)[^\d]{0,10}(\d+\.?\d*)\s*(?:이상|점|/)",
+# "평점 3.0 이상", "GPA 3.0/4.5" 처럼 키워드 근처에서 커트라인을 직접 명시하는 형태.
+# 끝을 "이상|/"로만 한정한 이유: 과거 "점"까지 허용했을 때 "4.5점 만점" 같은
+# 척도 설명 문구를 커트라인으로 오인하는 오탐이 있었음.
+_GPA_DIRECT_PATTERN = re.compile(
+    r"(?:학점|평점|성적|gpa)[^\d]{0,10}(\d+\.?\d*)\s*(?:점\s*)?(?:이상|/)",
     re.IGNORECASE,
 )
+# "평점 4.5 만점 중 3.0 이상"처럼 만점 기준을 먼저 밝히고 실제 커트라인이 뒤에
+# 나오는 형태. 키워드-숫자 간 거리가 멀어 위 패턴이 놓치는 경우를 보완한다.
+_GPA_SCALE_QUALIFIED_PATTERN = re.compile(
+    r"만점[^\d]{0,10}(\d+\.?\d*)\s*(?:점\s*)?이상",
+)
+# 숫자 바로 뒤에 "~만점"이 오면 그 숫자는 최대 척도를 설명하는 것이지
+# 요구 커트라인이 아니므로 _GPA_DIRECT_PATTERN 매치에서 제외한다.
+_GPA_SCALE_DESC_SUFFIX = re.compile(r"^\s*[\(\[]?\s*만점")
+
+
+def _extract_required_gpa(content: str) -> float | None:
+    """정책 텍스트에서 학점 커트라인을 추출한다. 조건이 없으면 None."""
+    candidates: list[float] = []
+
+    for m in _GPA_SCALE_QUALIFIED_PATTERN.finditer(content):
+        candidates.append(float(m.group(1)))
+
+    for m in _GPA_DIRECT_PATTERN.finditer(content):
+        tail = content[m.end():m.end() + 6]
+        if _GPA_SCALE_DESC_SUFFIX.match(tail):
+            continue
+        candidates.append(float(m.group(1)))
+
+    # 100점 만점 등 4.5 스케일과 비교 불가한 값은 제외
+    valid = [v for v in candidates if v <= 10]
+    if not valid:
+        return None
+    # 하나의 정책에서 조건이 여러 개 검출되면(전형별 상이 등) 가장 관대한(낮은)
+    # 기준을 사용해, 실제로는 지원 가능한 정책을 잘못 제외하는 것을 방지한다.
+    return min(valid)
+
+
+#----------------------------------------------
+# 도구 간 요청별 컨텍스트 — LLM이 정책 JSON을 직접 전달할 필요 없이
+# 도구가 get_runtime()으로 검색된 정책 목록을 바로 조회한다.
+# (LLM이 대용량 JSON을 인자로 그대로 옮겨 적어야 했던 방식은 응답 지연과
+#  transcription 오류의 원인이었음)
+#----------------------------------------------
+@dataclass
+class EducationContext:
+    policies: list[dict] = field(default_factory=list)
 
 #----------------------------------------------
 # 도구 정의
@@ -113,7 +159,7 @@ def estimate_income_grade(monthly_income: int, family_size: int) -> str:
 
 
 @tool
-def filter_by_gpa(policies_json: str, user_gpa: float) -> str:
+def filter_by_gpa(user_gpa: float) -> str:
     """
     사용자 학점 미달로 신청 불가한 정책을 감지합니다.
     학점 조건이 명시된 정책 중 미달인 것만 반환하므로,
@@ -122,7 +168,6 @@ def filter_by_gpa(policies_json: str, user_gpa: float) -> str:
     학점 정보가 없으면 절대 호출하지 마세요.
 
     Args:
-        policies_json: 정책 목록 JSON 문자열 (프롬프트의 [정책 구조화 데이터]에서 추출)
         user_gpa: 사용자 학점 (예: 3.5)
     Returns:
         str: 학점 미달로 추천에서 제외해야 할 정책 목록 (없으면 전부 추천 가능)
@@ -130,12 +175,13 @@ def filter_by_gpa(policies_json: str, user_gpa: float) -> str:
     logger.info("filter_by_gpa 실행: user_gpa=%.2f", user_gpa)
     if user_gpa <= 0:
         return "학점 정보 없음 — 사용자가 학점을 명시적으로 언급한 경우에만 이 도구를 호출하세요."
-    try:
-        policies = json.loads(policies_json)
-        if not isinstance(policies, list):
-            raise ValueError("배열이 아님")
-    except (json.JSONDecodeError, ValueError, TypeError):
-        return "정책 데이터 파싱 실패 — policies_json을 올바른 JSON 배열로 전달하세요."
+
+    # get_runtime().context는 ainvoke(context=...) 호출을 빠뜨리면 None이 된다.
+    # 이 경우에도 AttributeError로 턴 전체가 죽지 않도록 빈 컨텍스트로 방어한다.
+    context = get_runtime(EducationContext).context or EducationContext()
+    policies = context.policies
+    if not policies:
+        return "필터링할 정책 데이터가 없습니다 — 검색된 정책을 그대로 안내하세요."
 
     blocked = []
 
@@ -147,14 +193,9 @@ def filter_by_gpa(policies_json: str, user_gpa: float) -> str:
             str(p.get("plcySprtCn") or ""),
             str(p.get("addAplyQlfcCndCn") or ""),
         ])
-        match = _GPA_PATTERN.search(content)
-        if match:
-            required = float(match.group(1))
-            if required > 10:
-                # 100점 만점 표기로 추정 — 4.5 만점 학점과 비교 불가, 스킵
-                continue
-            if user_gpa < required:
-                blocked.append(f"  ❌ {name} (최소 {required:.1f}점 → 현재 {user_gpa:.2f}점으로 미달)")
+        required = _extract_required_gpa(content)
+        if required is not None and user_gpa < required:
+            blocked.append(f"  ❌ {name} (최소 {required:.1f}점 → 현재 {user_gpa:.2f}점으로 미달)")
 
     lines = [f"[ 학점 필터 결과 — 내 학점: {user_gpa:.2f} ]"]
     if blocked:
@@ -284,7 +325,9 @@ _SYSTEM_PROMPTS = {
 
 다음 도구를 적극 활용하세요:
 - classify_training_coverage: 해당 정책이 급여/비급여 훈련인지 명시
-- estimate_income_grade: 소득 조건이 있을 때 사용자 소득분위 추정
+- estimate_income_grade: 사용자가 소득분위를 직접 물어보거나 국가장학금 신청 가능 여부를 확인해달라고
+  명시적으로 요청했고, 월소득·가구원 수를 알 때만 호출하세요. 가구원 수를 모르면 절대 임의로
+  가정해 호출하지 말고, 그 정보 없이는 소득 조건을 판단할 수 없다고 안내하거나 먼저 물어보세요.
 - filter_by_gpa: 학점 조건 확인 요청 시
 - calculate_dday: 사용자가 마감일을 물을 때 호출. deadline에 bizPrdEndYmd, apply_period_type에 aplyPrdSeCd 값을 사용하세요
 
@@ -309,7 +352,7 @@ _SYSTEM_PROMPTS = {
 다음 도구를 코멘트 작성에 참고로 활용할 수 있습니다:
 - classify_training_coverage: 급여/비급여 여부
 - filter_by_gpa: 학점 조건
-- estimate_income_grade: 소득분위 추정
+- estimate_income_grade: 소득분위 추정 (월소득·가구원 수를 알 때만 호출 — 모르면 임의로 가정해 호출하지 마세요)
 - calculate_dday: 마감일 D-day 계산
 
 인사말·맺음말·헤더 없이 곧바로 코멘트 문장만 출력하세요.""",
@@ -348,7 +391,10 @@ class EducationAgent:
                 system_prompt=prompt + (
                     COMPARISON_COMMENT_GUIDE if inquiry_type == "비교" else OUTPUT_FORMAT_GUIDE
                 # 추천은 각 정책 블록에 추천 이유 + 적합도 점수를 노출하도록 유도.
-                ) + (RECOMMEND_GUIDE if inquiry_type == "추천" else ""),
+                ) + (RECOMMEND_GUIDE if inquiry_type == "추천" else "")
+                # 상세조회는 다른 3개 도메인과 동일하게 "정책 1개 집중" 가이드를 명시한다.
+                + (OUTPUT_DETAIL_GUIDE if inquiry_type == "상세조회" else ""),
+                context_schema=EducationContext,
             )
             for inquiry_type, prompt in _SYSTEM_PROMPTS.items()
         }
@@ -366,7 +412,7 @@ class EducationAgent:
         Args:
             inquiry: 사용자 질문
             knowledge: education_search_node가 검색한 정책 텍스트
-            policies: 정책 메타데이터 리스트 (도구가 filter_by_gpa에서 활용)
+            policies: 정책 메타데이터 리스트 (filter_by_gpa 도구가 EducationContext로 조회)
             user_profile: 유저 프로필 (guest면 None/빈 dict)
             inquiry_type: 질문 의도 — 검색/추천/상세조회/비교
         Returns:
@@ -388,14 +434,15 @@ class EducationAgent:
             f"[정책 정보]\n{knowledge or '(검색된 정책 없음)'}\n"
         )
         if policies:
-            prompt += f"\n[정책 구조화 데이터 — filter_by_gpa, classify_training_coverage 도구에 전달 가능]\n{json.dumps(policies, ensure_ascii=False)}\n"
+            prompt += f"\n[정책 구조화 데이터 — dday 등 표시에 활용]\n{json.dumps(policies, ensure_ascii=False)}\n"
         if user_profile:
             prompt += f"\n[사용자 정보]\n{user_profile}\n"
 
         prompt += SUGGESTIONS_PROMPT
 
         result = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": prompt}]}
+            {"messages": [{"role": "user", "content": prompt}]},
+            context=EducationContext(policies=policies or []),
         )
         content = result["messages"][-1].content
         return parse_suggestions(content)
