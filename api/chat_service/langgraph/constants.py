@@ -172,7 +172,10 @@ POLICY_METADATA_FIELDS = (
     "mrgSttsCd",         # 혼인 상태 코드
     # check_eligibility 자격 검증용
     "jobCd",            # 취업 상태 조건
-    "srhmhldIncmCd",    # 소득 분위 조건
+    "srhmhldIncmCd",    # (구) 소득 조건 — 미사용, 하위호환 위해 유지
+    "earnCndSeCd",      # 소득 조건 구분 (무관/연소득/기타)
+    "earnMinAmt",       # 소득 최소 금액 (만원, 연소득일 때)
+    "earnMaxAmt",       # 소득 최대 금액 (만원, 연소득일 때)
     "plcyAplyRgnCd",    # 신청 지역 조건
     "schoolcd",         # 학력 조건
     # 카드 UI 표시용
