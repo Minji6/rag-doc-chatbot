@@ -91,13 +91,7 @@
 
 ---
 
-## 4. ERD
-
-> 추후 추가 예정
-
----
-
-## 5. Technology Stack
+## 4 Technology Stack
 
 | 분류 | 기술 |
 |------|------|
@@ -110,7 +104,7 @@
 
 ---
 
-## 5-1. API 구조
+## 4-1. API 구조
 
 | Prefix | 역할 |
 |--------|------|
@@ -142,47 +136,7 @@ api/
 
 ---
 
-## 6. Getting Started
-
-### 사전 요구사항
-- Python 3.11+
-- PostgreSQL + pgvector 확장
-- Docker (DB 실행용)
-
-### 설치 및 실행
-
-```bash
-# 1. 레포 클론
-git clone https://github.com/Minji6/rag-doc-chatbot
-cd rag-doc-chatbot
-
-# 2. 가상환경 생성 및 활성화
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 3. 패키지 설치
-pip install -r requirements.txt
-
-# 4. 환경변수 설정
-cp .env.example .env
-# .env 파일을 열어 값 입력
-
-# 5. 실행
-python main.py
-```
-
-### 환경변수 (.env)
-
-```
-OPENAI_API_KEY=
-TAVILY_API_KEY=
-DATABASE_URL=postgresql://postgres:비밀번호@localhost:5432/DB이름
-DATABASE_URL_SQLALCHEMY=postgresql+psycopg://postgres:비밀번호@localhost:5432/DB이름
-```
-
----
-
-## 7. Development Workflow
+## 5. Development Workflow
 
 ### 브랜치 전략
 
@@ -199,7 +153,7 @@ DATABASE_URL_SQLALCHEMY=postgresql+psycopg://postgres:비밀번호@localhost:543
 
 ---
 
-## 8. Convention
+## 6. Convention
 
 ### 커밋 컨벤션
 
