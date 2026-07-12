@@ -1,6 +1,6 @@
 # 📚 청년정책지원 챗봇 — Backend
 
-온통청년 API 정책 데이터를 RAG로 검색해 주거·취업·교육·금융 분야별 맞춤 답변을 제공하는 청년정책 AI 챗봇 백엔드
+온통청년 API 정책 데이터를 RAG로 검색해 주거·일자리·교육·복지문화 분야별 맞춤 답변을 제공하는 청년정책 AI 챗봇 백엔드
 
 ---
 
@@ -16,12 +16,56 @@
 
 ## 2. Team Members
 
-| 역할 | 이름 |
-|------|------|
-| 팀장 · FullStack | 김민지 |
-| 팀원 · FullStack | 강연주 |
-| 팀원 · FullStack | 김정원 |
-| 팀원 · FullStack | 이지예 |
+<table>
+  <tbody>
+    <tr>
+      <td align="center">
+        <a href="https://github.com/Minji6">
+          <img src="https://github.com/Minji6.png" width="100px;" alt="김민지"/>
+          <br />
+          <sub><b>김민지</b></sub>
+        </a>
+        <br />
+        <sub>팀장 · FullStack</sub>
+        <br />
+        <a href="https://github.com/Minji6">GitHub</a>
+      </td>
+      <td align="center">
+        <a href="https://github.com/dlwldP">
+          <img src="https://github.com/dlwldP.png" width="100px;" alt="dlwldP"/>
+          <br />
+          <sub><b>이지예</b></sub>
+        </a>
+        <br />
+        <sub>팀원 · FullStack</sub>
+        <br />
+        <a href="https://github.com/dlwldP">GitHub</a>
+      </td>
+      <td align="center">
+        <a href="https://github.com/garden-kim-git">
+          <img src="https://github.com/garden-kim-git.png" width="100px;" alt="garden-kim-git"/>
+          <br />
+          <sub><b>김정원</b></sub>
+        </a>
+        <br />
+        <sub>팀원 · FullStack</sub>
+        <br />
+        <a href="https://github.com/garden-kim-git">GitHub</a>
+      </td>
+      <td align="center">
+        <a href="https://github.com/qqqkyj">
+          <img src="https://github.com/qqqkyj.png" width="100px;" alt="qqqkyj"/>
+          <br />
+          <sub><b>강연주</b></sub>
+        </a>
+        <br />
+        <sub>팀원 · FullStack</sub>
+        <br />
+        <a href="https://github.com/qqqkyj">GitHub</a>
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
@@ -29,14 +73,13 @@
 
 | # | 기능 | 설명 | 활용 챕터 |
 |---|------|------|----------|
-| 1 | 도메인별 정책 RAG 답변 | 주거·취업·교육·금융 전담 에이전트가 PGVector에서 분야별 정책 검색 후 한국어 답변 생성 | sec07, sec08 |
-| 2 | Multi-Agent Supervisor 라우팅 | 사용자 의도 분석 후 4개 도메인 에이전트 중 하나로 조건 분기 | sec09 |
-| 3 | 대화 히스토리 유지 | 게스트는 InMemorySaver, 회원은 AsyncPostgresSaver로 영구 저장 | sec06 |
-| 4 | 정책 데이터 수집 + 임베딩 | 온통청년 오픈 API → httpx 수집 → 청킹 → PGVector 저장 | sec08 |
-| 5 | 회원가입 · 로그인 (JWT) | 회원/게스트 판별, AsyncPostgresSaver 전환 기준 | sec06 |
-| 6 | 정책 상세 조회 + D-day | 정책 마감일 기반 D-day 계산, return_direct 도구로 즉시 반환 | sec07 |
+| 1 | 도메인별 정책 RAG 답변 | 주거·일자리·교육·복지문화 4개 전담 에이전트가 PGVector에서 분야별 정책 검색 후 한국어 답변 생성 | sec07, sec08 |
+| 2 | LangGraph 기반 Multi-Agent 오케스트레이션 | 의도 분석(analysis) → 해당 도메인으로 fan-out 병렬 검색 → composer가 fragment를 최종 답변으로 조립(fan-in) | sec09 |
+| 3 | 후속질문 맥락 처리 | contextualize 노드가 후속질문을 독립형 질의로 재작성하고, 직전 턴 정책 메모리로 "두 번째 정책", "A랑 B 비교" 같은 참조를 해소 | sec09 |
+| 4 | 정책 상세 조회 + 자격진단 + D-day | 정책 마감일 기반 D-day 계산, 로그인 사용자는 소득·학력 등 조건 기반 자격진단 결과를 상세 조회에 첨부 | sec07 |
+| 5 | 정책 데이터 수집 + 임베딩 | 온통청년 오픈 API → httpx 수집 → 청킹 → PGVector 저장 | sec08 |
+| 6 | 회원가입 · 로그인 | 회원/게스트 판별, AsyncPostgresSaver 전환 기준 | sec06 |
 | 7 | 스트리밍 답변 출력 | astream + StreamingResponse 실시간 출력 | sec02, sec05 |
-| 8 | 맞춤 정책 추천 | 사용자 프로필 기반 similarity search로 상위 정책 추천 | sec04, sec08 |
 
 ---
 
@@ -50,12 +93,44 @@
 
 | 분류 | 기술 |
 |------|------|
-| Backend | Python · FastAPI · SQLAlchemy (async) |
-| AI | LangChain · LangGraph · OpenAI |
+| Backend | Python · FastAPI · SQLAlchemy (async) · psycopg |
+| AI | LangChain · LangGraph · OpenAI (gpt-4o-mini) · Tavily (웹 검색 보완) |
 | Database | PostgreSQL · pgvector |
 | DB 관리 | pgAdmin |
 | Infra | Docker |
 | Tools | GitHub · Visual Studio Code |
+
+---
+
+## 5-1. API 구조
+
+| Prefix | 역할 |
+|--------|------|
+| `/api/chat` | 챗봇 대화 요청 (LangGraph Supervisor 실행) |
+| `/api/auth` | 회원가입 · 조회 · 탈퇴 |
+| `/chat_history` | 대화 기록 조회 · 삭제, 대화 목록 조회 |
+| `/upload` | 청년정책 데이터(온통청년 API) 수집 · 임베딩 적재 |
+
+### 디렉터리 구조 (`api/`)
+
+```
+api/
+├── chat/                 # 챗봇 엔드포인트
+├── chat_service/
+│   ├── controller.py
+│   ├── policy_memory.py  # 후속질문 해소용 직전 턴 정책 메모리
+│   └── langgraph/
+│       ├── supervisor.py # 그래프 정의 (fan-out → fan-in)
+│       ├── state.py
+│       ├── nodes/        # analysis, contextualize, image_analysis, composer, general 등
+│       ├── agents/       # housing / employment / education / welfare 에이전트
+│       └── tools/        # dday, age, eligibility, policy_search, suggestions 등
+├── auth_service/         # 회원가입 · 로그인
+├── history_service/      # 대화 기록 (InMemorySaver / AsyncPostgresSaver)
+├── upload_service/       # 정책 데이터 수집 · 임베딩
+├── models/
+└── common/                # 예외 처리, DB 커넥션 풀 등 공통 유틸
+```
 
 ---
 
