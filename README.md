@@ -12,6 +12,10 @@
 | 프론트엔드 레포 | [rag-doc-chatbot-frontend](https://github.com/Minji6/rag-doc-chatbot-frontend) |
 | 개발 기간 | 2026.06.16 ~ 2026.06.30 (2주) |
 
+<p align="center">
+  <img src="docs/chatbot_screenshot.png" width="700" alt="청년정책지원 챗봇 화면"/>
+</p>
+
 ---
 
 ## 2. Team Members
@@ -80,6 +84,10 @@
 | 5 | 정책 데이터 수집 + 임베딩 | 온통청년 오픈 API → httpx 수집 → 청킹 → PGVector 저장 | sec08 |
 | 6 | 회원가입 · 로그인 | 회원/게스트 판별, AsyncPostgresSaver 전환 기준 | sec06 |
 | 7 | 스트리밍 답변 출력 | astream + StreamingResponse 실시간 출력 | sec02, sec05 |
+
+<p align="center">
+  <img src="docs/langgraph_flow.png" width="700" alt="LangGraph Multi-Agent 플로우"/>
+</p>
 
 ---
 
