@@ -7,7 +7,8 @@
       "name": "enrich-characterization-test",
       "status": "completed",
       "started_at": "2026-07-15T17:21:23+0900",
-      "summary": "tests/chat_service/langgraph/test_supervisor_enrich.py 추가 — _enrich_policies_support의 빈 입력, 요약 추가, 빈 지원내용 스킵, LLM 실패 폴백, 입력 비변경, 순서 보존 계약을 고정 (mock_llm_summary 헬퍼로 LLM 호출 지점 격리)"
+      "summary": "tests/chat_service/langgraph/test_supervisor_enrich.py 추가 — _enrich_policies_support의 빈 입력, 요약 추가, 빈 지원내용 스킵, LLM 실패 폴백, 입력 비변경, 순서 보존 계약을 고정 (mock_llm_summary 헬퍼로 LLM 호출 지점 격리)",
+      "completed_at": "2026-07-15T17:25:41+0900"
     },
     {
       "step": 1,
