@@ -7,7 +7,8 @@
       "name": "remove-dead-chat-controller",
       "status": "completed",
       "started_at": "2026-07-15T16:31:07+0900",
-      "summary": "미사용 api/chat/controller.py(구버전 chat 엔드포인트) 삭제, ARCHITECTURE.md 디렉터리 트리에서 api/chat/ 라인 제거"
+      "summary": "미사용 api/chat/controller.py(구버전 chat 엔드포인트) 삭제, ARCHITECTURE.md 디렉터리 트리에서 api/chat/ 라인 제거",
+      "completed_at": "2026-07-15T16:32:14+0900"
     },
     {
       "step": 1,
