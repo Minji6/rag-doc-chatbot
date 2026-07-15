@@ -252,8 +252,11 @@ class StepExecutor:
         if not claude_bin:
             print("  ERROR: 'claude' CLI를 찾을 수 없습니다. npm install -g @anthropic-ai/claude-code 후 재시도하세요.")
             sys.exit(1)
+        # 프롬프트는 stdin으로 전달한다. 인자로 넘기면 Windows 명령줄 길이 제한(8191자)에
+        # 걸려 즉시 실패한다 (가드레일 문서 주입으로 프롬프트가 수만 자에 달함).
         result = subprocess.run(
-            [claude_bin, "-p", "--dangerously-skip-permissions", "--output-format", "json", prompt],
+            [claude_bin, "-p", "--dangerously-skip-permissions", "--output-format", "json"],
+            input=prompt,
             cwd=self._root, capture_output=True, text=True, timeout=1800,
             encoding="utf-8", errors="replace",
         )
