@@ -1,0 +1,24 @@
+{
+  "project": "청년정책지원 챗봇 Backend",
+  "phase": "1-enrich-batch",
+  "steps": [
+    {
+      "step": 0,
+      "name": "enrich-characterization-test",
+      "status": "completed",
+      "started_at": "2026-07-15T17:21:23+0900",
+      "summary": "tests/chat_service/langgraph/test_supervisor_enrich.py 추가 — _enrich_policies_support의 빈 입력, 요약 추가, 빈 지원내용 스킵, LLM 실패 폴백, 입력 비변경, 순서 보존 계약을 고정 (mock_llm_summary 헬퍼로 LLM 호출 지점 격리)",
+      "completed_at": "2026-07-15T17:25:41+0900"
+    },
+    {
+      "step": 1,
+      "name": "enrich-batch-call",
+      "status": "completed",
+      "started_at": "2026-07-15T17:25:42+0900",
+      "summary": "_enrich_policies_support의 정책별(N회) LLM 호출을 composer의 _summarize_compare_cells 패턴을 따른 구조화 출력 배치(1회) 호출로 교체. 계약 테스트 6건 + 신규 배치 단일호출 테스트 통과, mypy 통과",
+      "completed_at": "2026-07-15T17:30:18+0900"
+    }
+  ],
+  "created_at": "2026-07-15T17:21:23+0900",
+  "completed_at": "2026-07-15T17:30:20+0900"
+}
