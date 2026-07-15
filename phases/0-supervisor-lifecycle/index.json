@@ -5,8 +5,10 @@
     {
       "step": 0,
       "name": "remove-dead-chat-controller",
-      "status": "pending",
-      "started_at": "2026-07-15T16:06:06+0900"
+      "status": "error",
+      "started_at": "2026-07-15T16:06:06+0900",
+      "error_message": "[3회 시도 후 실패] Step did not update status",
+      "failed_at": "2026-07-15T16:28:19+0900"
     },
     {
       "step": 1,
