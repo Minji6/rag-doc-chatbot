@@ -1,0 +1,8 @@
+{
+  "project": "청년정책지원 챗봇 Backend",
+  "phase": "1-enrich-batch",
+  "steps": [
+    { "step": 0, "name": "enrich-characterization-test", "status": "pending" },
+    { "step": 1, "name": "enrich-batch-call", "status": "pending" }
+  ]
+}
