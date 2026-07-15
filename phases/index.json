@@ -7,7 +7,8 @@
     },
     {
       "dir": "1-enrich-batch",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-07-15T17:30:20+0900"
     }
   ]
 }
