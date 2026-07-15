@@ -433,7 +433,8 @@ class TestInvokeClaude:
             output = executor._invoke_claude(step, preamble)
 
         cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "claude"
+        # claude는 shutil.which로 해석된 절대경로일 수 있다 (Windows .cmd 셔틀 대응)
+        assert Path(cmd[0]).name.split(".")[0] == "claude"
         assert "-p" in cmd
         assert "--dangerously-skip-permissions" in cmd
         assert "--output-format" in cmd

@@ -10,6 +10,7 @@ import argparse
 import contextlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -236,9 +237,15 @@ class StepExecutor:
             sys.exit(1)
 
         prompt = preamble + step_file.read_text(encoding="utf-8")
+        # Windows에서 npm 셔틀(claude.cmd)은 CreateProcess가 못 찾으므로 which로 실제 경로 해석
+        claude_bin = shutil.which("claude")
+        if not claude_bin:
+            print("  ERROR: 'claude' CLI를 찾을 수 없습니다. npm install -g @anthropic-ai/claude-code 후 재시도하세요.")
+            sys.exit(1)
         result = subprocess.run(
-            ["claude", "-p", "--dangerously-skip-permissions", "--output-format", "json", prompt],
+            [claude_bin, "-p", "--dangerously-skip-permissions", "--output-format", "json", prompt],
             cwd=self._root, capture_output=True, text=True, timeout=1800,
+            encoding="utf-8", errors="replace",
         )
 
         if result.returncode != 0:
