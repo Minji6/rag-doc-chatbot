@@ -32,11 +32,13 @@ async def validation_exception_handler(request: Request, e: RequestValidationErr
     )
 
 # 그 이외에 발생하는 모든 예외를 처리하는 함수
+# 예외 내용은 서버 로그에만 남긴다 — str(e)를 응답에 담으면 DB 접속 정보·내부 경로 등이
+# 클라이언트에 노출될 수 있다.
 async def exception_handler(request: Request, e: Exception):
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"message": "서버 에러", "detail": str(e)}
+        content={"message": "서버 에러"}
     )
     
 ###############################################################

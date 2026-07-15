@@ -54,8 +54,9 @@ async def get_orm_session() -> AsyncGenerator[AsyncSession, None]:
         # 컨트롤러 함수가 정상 종료되면 yield 다음 코드부터 실행
         # 트랜잭션 커밋
         await orm_session.commit()
-    except:
+    except BaseException:
         # 컨트롤러 함수에서 예외 발생 시 롤백 수행
+        # (asyncio.CancelledError 포함 — 취소돼도 롤백은 해야 하므로 BaseException으로 잡고 반드시 re-raise)
         await orm_session.rollback()
         # 동일한 예외를 다시 발생시켜 상위 호출 스택으로 전달
         raise
