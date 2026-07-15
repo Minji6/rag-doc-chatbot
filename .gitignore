@@ -267,3 +267,9 @@ embeddings/
 # 로컬 임시/실험 스크립트
 # ==========================================
 test_temp.py
+
+# Claude Code 로컬 설정
+.claude/launch.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.claude/hooks/

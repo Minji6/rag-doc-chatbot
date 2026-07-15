@@ -10,6 +10,7 @@ import argparse
 import contextlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -236,9 +237,28 @@ class StepExecutor:
             sys.exit(1)
 
         prompt = preamble + step_file.read_text(encoding="utf-8")
+        # Windows에서 npm 셔틀(claude.cmd)은 CreateProcess가 못 찾으므로 which로 실제 경로 해석.
+        # 터미널 PATH에 npm 경로가 없는 경우를 대비해 npm 글로벌 기본 위치도 직접 확인한다.
+        claude_bin = shutil.which("claude")
+        if not claude_bin:
+            appdata = os.environ.get("APPDATA", "")
+            for candidate in (
+                Path(appdata) / "npm" / "claude.cmd",
+                Path(appdata) / "npm" / "claude",
+            ):
+                if appdata and candidate.exists():
+                    claude_bin = str(candidate)
+                    break
+        if not claude_bin:
+            print("  ERROR: 'claude' CLI를 찾을 수 없습니다. npm install -g @anthropic-ai/claude-code 후 재시도하세요.")
+            sys.exit(1)
+        # 프롬프트는 stdin으로 전달한다. 인자로 넘기면 Windows 명령줄 길이 제한(8191자)에
+        # 걸려 즉시 실패한다 (가드레일 문서 주입으로 프롬프트가 수만 자에 달함).
         result = subprocess.run(
-            ["claude", "-p", "--dangerously-skip-permissions", "--output-format", "json", prompt],
+            [claude_bin, "-p", "--dangerously-skip-permissions", "--output-format", "json"],
+            input=prompt,
             cwd=self._root, capture_output=True, text=True, timeout=1800,
+            encoding="utf-8", errors="replace",
         )
 
         if result.returncode != 0:

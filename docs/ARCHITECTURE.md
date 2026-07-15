@@ -11,7 +11,6 @@
 
 ```
 api/
-├── chat/                     # 챗봇 엔드포인트 (controller)
 ├── chat_service/
 │   ├── controller.py
 │   ├── policy_memory.py      # 후속질문 해소용 직전 턴 정책 메모리

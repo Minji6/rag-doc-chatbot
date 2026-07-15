@@ -1,6 +1,7 @@
 # api/chat_service/langgraph/supervisor.py
 import asyncio
 import logging
+from functools import lru_cache
 from typing import Annotated, Hashable
 from fastapi import Depends
 from langchain.chat_models import init_chat_model
@@ -244,4 +245,9 @@ class ChatbotSupervisor:
         return self.workflow.get_graph().draw_mermaid_png()
 
 
-ChatbotSupervisorDep = Annotated[ChatbotSupervisor, Depends(ChatbotSupervisor)]
+@lru_cache(maxsize=1)
+def get_chatbot_supervisor() -> ChatbotSupervisor:
+    return ChatbotSupervisor()
+
+
+ChatbotSupervisorDep = Annotated[ChatbotSupervisor, Depends(get_chatbot_supervisor)]
