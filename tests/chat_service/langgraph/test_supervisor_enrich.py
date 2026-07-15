@@ -13,6 +13,7 @@ os.environ.setdefault(
 )
 
 import asyncio
+import json
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Iterator
@@ -25,18 +26,27 @@ from api.chat_service.langgraph import supervisor
 def mock_llm_summary(
     *, return_value: str | None = None, side_effect: BaseException | None = None
 ) -> Iterator[AsyncMock]:
-    """_enrich_policies_support가 사용하는 LLM 호출 지점을 모킹한다.
+    """_enrich_policies_support가 사용하는 배치 LLM 호출 지점을 모킹한다.
 
-    리팩토링으로 호출 형태(단건 -> batch)가 바뀌면 이 함수만 수정하면 되고,
-    나머지 테스트의 어서션은 그대로 유지된다.
+    리팩토링으로 호출 형태(단건 -> batch)가 바뀌어도 이 함수만 수정하면 되고,
+    나머지 테스트의 어서션은 그대로 유지된다. return_value는 배치에 포함된
+    모든 idx에 동일하게 적용된다(요청 payload를 파싱해 idx를 그대로 매핑).
     """
     mock_ainvoke = AsyncMock()
     if side_effect is not None:
         mock_ainvoke.side_effect = side_effect
     else:
-        mock_ainvoke.return_value = SimpleNamespace(content=return_value or "")
-    fake_llm = SimpleNamespace(ainvoke=mock_ainvoke)
-    with patch.object(supervisor, "_enrich_llm", fake_llm):
+        async def _fake_ainvoke(messages: list) -> supervisor._SupportSummaries:
+            payload = json.loads(messages[1].content)
+            items = [
+                supervisor._SupportSummary(idx=entry["idx"], summary=return_value or "")
+                for entry in payload
+            ]
+            return supervisor._SupportSummaries(items=items)
+
+        mock_ainvoke.side_effect = _fake_ainvoke
+    fake_model = SimpleNamespace(ainvoke=mock_ainvoke)
+    with patch.object(supervisor, "_support_summary_model", fake_model):
         yield mock_ainvoke
 
 
@@ -118,3 +128,17 @@ def test_order_preserved() -> None:
         result = asyncio.run(supervisor._enrich_policies_support(policies))
 
     assert [p["plcyNm"] for p in result] == [p["plcyNm"] for p in policies]
+
+
+def test_multiple_policies_trigger_exactly_one_batch_call() -> None:
+    policies = [
+        {"plcyNm": f"정책{i}", "plcySprtCn": f"지원 내용 {i}"} for i in range(5)
+    ]
+
+    with mock_llm_summary(return_value="요약") as mock_ainvoke:
+        result = asyncio.run(supervisor._enrich_policies_support(policies))
+
+    assert mock_ainvoke.call_count == 1
+    assert len(result) == 5
+    for enriched in result:
+        assert enriched["plcySprtCnSummary"] == "요약"

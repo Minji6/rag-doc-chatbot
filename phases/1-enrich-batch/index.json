@@ -13,7 +13,10 @@
     {
       "step": 1,
       "name": "enrich-batch-call",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-07-15T17:25:42+0900",
+      "summary": "_enrich_policies_support의 정책별(N회) LLM 호출을 composer의 _summarize_compare_cells 패턴을 따른 구조화 출력 배치(1회) 호출로 교체. 계약 테스트 6건 + 신규 배치 단일호출 테스트 통과, mypy 통과",
+      "completed_at": "2026-07-15T18:10:00+0900"
     }
   ],
   "created_at": "2026-07-15T17:21:23+0900"

@@ -1,10 +1,12 @@
 # api/chat_service/langgraph/supervisor.py
-import asyncio
+import json
 import logging
 from functools import lru_cache
-from typing import Annotated, Hashable
+from typing import Annotated, Hashable, cast
 from fastapi import Depends
+from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
+from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
 from api.chat_service.langgraph.nodes.housing_search_node import housing_search_node
@@ -27,10 +29,28 @@ from api.chat_service.policy_memory import get_last_policies, save_last_policies
 
 logger = logging.getLogger(__name__)
 
-_enrich_llm = init_chat_model("gpt-4o-mini", model_provider="openai", temperature=0.0)
+# ── 지원 내용 배치 요약(LLM) ──────────────────────────────────────────────────
+# 상세조회 policies의 '지원 내용' 원문을 정책당 LLM 호출하면 N건 = N번 호출이 되어
+# 비용이 커진다. composer의 비교 표 셀 요약(_summarize_compare_cells)과 동일하게
+# 구조화 출력(with_structured_output)으로 한 번의 배치 호출에 담아 처리한다.
+
+class _SupportSummary(BaseModel):
+    """정책 1건의 지원 내용 요약."""
+    idx: Annotated[int, Field(description="입력 정책의 0-based 순번")]
+    summary: Annotated[str, Field(description="2~3문장 요약 (없으면 빈 문자열)")] = ""
+
+
+class _SupportSummaries(BaseModel):
+    """정책들의 지원 내용 요약 묶음."""
+    items: list[_SupportSummary]
+
+
+_support_summary_model = init_chat_model(
+    "gpt-4o-mini", model_provider="openai", temperature=0.0
+).with_structured_output(_SupportSummaries)
 
 _ENRICH_SYSTEM_PROMPT = """당신은 청년정책 안내문 요약 AI입니다.
-아래 정책의 '지원 내용' 원문을 2~3문장의 짧은 요약문으로 작성하세요.
+각 정책의 '지원 내용' 원문을 2~3문장의 짧은 요약문으로 작성하세요.
 
 규칙:
 - 2~3문장 이내로 핵심(지원 금액·기간·지원 방식·주요 조건)만 남기세요.
@@ -38,35 +58,49 @@ _ENRICH_SYSTEM_PROMPT = """당신은 청년정책 안내문 요약 AI입니다.
 - 존댓말(~합니다/~됩니다)을 사용하세요.
 - 서식(제목·불릿·번호·마크다운) 없이 평문으로만 쓰세요.
 - "신청하세요", "활용해 보세요" 같은 권유·홍보 문구는 쓰지 마세요.
-- 원문에 없는 정보를 추가하거나 지어내지 마세요."""
-
-
-async def _summarize_support_content(plcy_sprt_cn: str, plcy_nm: str) -> str:
-    """지원 내용 원문을 LLM으로 가독성 좋게 정리한다."""
-    if not plcy_sprt_cn or not plcy_sprt_cn.strip():
-        return ""
-    try:
-        result = await _enrich_llm.ainvoke([
-            {"role": "system", "content": _ENRICH_SYSTEM_PROMPT},
-            {"role": "user", "content": f"정책명: {plcy_nm}\n\n지원 내용 원문:\n{plcy_sprt_cn}"},
-        ])
-        return str(result.content).strip()
-    except Exception:
-        logger.exception("지원내용 LLM 정리 실패 — 정책명=%s", plcy_nm[:30])
-        return ""
+- 원문에 없는 정보를 추가하거나 지어내지 마세요.
+- 입력으로 받은 모든 정책을 idx 그대로 매겨 빠짐없이 반환하세요."""
 
 
 async def _enrich_policies_support(policies: list[dict]) -> list[dict]:
-    """상세조회 policies에 plcySprtCnSummary 필드를 병렬로 추가한다."""
+    """상세조회 policies에 plcySprtCnSummary 필드를 배치 LLM 호출로 추가한다."""
     if not policies:
         return policies
-    summaries = await asyncio.gather(*[
-        _summarize_support_content(p.get("plcySprtCn", ""), p.get("plcyNm", ""))
-        for p in policies
-    ])
+
+    items = []
+    for idx, p in enumerate(policies):
+        plcy_sprt_cn = p.get("plcySprtCn", "")
+        if not plcy_sprt_cn or not str(plcy_sprt_cn).strip():
+            continue
+        items.append({
+            "idx": idx,
+            "plcyNm": p.get("plcyNm", ""),
+            "plcySprtCn": plcy_sprt_cn,
+        })
+
+    if not items:
+        return [dict(p) for p in policies]
+
+    try:
+        result = cast(_SupportSummaries, await _support_summary_model.ainvoke([
+            SystemMessage(content=_ENRICH_SYSTEM_PROMPT),
+            HumanMessage(content=json.dumps(items, ensure_ascii=False)),
+        ]))
+    except Exception:
+        logger.exception("지원내용 LLM 배치 요약 실패 — %d건", len(items))
+        return [dict(p) for p in policies]
+
+    summaries_by_idx: dict[int, str] = {}
+    for entry in result.items:
+        if not (0 <= entry.idx < len(policies)):
+            continue
+        if entry.summary.strip():
+            summaries_by_idx[entry.idx] = entry.summary.strip()
+
     enriched = []
-    for p, summary in zip(policies, summaries):
+    for idx, p in enumerate(policies):
         ep = dict(p)
+        summary = summaries_by_idx.get(idx)
         if summary:
             ep["plcySprtCnSummary"] = summary
         enriched.append(ep)
