@@ -237,8 +237,18 @@ class StepExecutor:
             sys.exit(1)
 
         prompt = preamble + step_file.read_text(encoding="utf-8")
-        # Windows에서 npm 셔틀(claude.cmd)은 CreateProcess가 못 찾으므로 which로 실제 경로 해석
+        # Windows에서 npm 셔틀(claude.cmd)은 CreateProcess가 못 찾으므로 which로 실제 경로 해석.
+        # 터미널 PATH에 npm 경로가 없는 경우를 대비해 npm 글로벌 기본 위치도 직접 확인한다.
         claude_bin = shutil.which("claude")
+        if not claude_bin:
+            appdata = os.environ.get("APPDATA", "")
+            for candidate in (
+                Path(appdata) / "npm" / "claude.cmd",
+                Path(appdata) / "npm" / "claude",
+            ):
+                if appdata and candidate.exists():
+                    claude_bin = str(candidate)
+                    break
         if not claude_bin:
             print("  ERROR: 'claude' CLI를 찾을 수 없습니다. npm install -g @anthropic-ai/claude-code 후 재시도하세요.")
             sys.exit(1)
