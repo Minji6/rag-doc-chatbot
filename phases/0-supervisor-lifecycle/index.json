@@ -1,0 +1,8 @@
+{
+  "project": "청년정책지원 챗봇 Backend",
+  "phase": "0-supervisor-lifecycle",
+  "steps": [
+    { "step": 0, "name": "remove-dead-chat-controller", "status": "pending" },
+    { "step": 1, "name": "supervisor-singleton", "status": "pending" }
+  ]
+}
