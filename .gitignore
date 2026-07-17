@@ -273,3 +273,6 @@ test_temp.py
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 .claude/hooks/
+
+# Harness step 실행 로그 (claude 세션 stdout 덤프 — 로컬 디버깅용)
+phases/*/step*-output.json
